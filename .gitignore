@@ -1,0 +1,16 @@
+# Yarn
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+# Next
+.next
+
+# Caches
+node_modules
+tsconfig.tsbuildinfo
+coverage
