@@ -11,7 +11,7 @@
     "lint": "tsc && next lint && eslint 'pages/**/*.tsx' 'utils/*.ts'",
     "test": "jest",
     "dev": "next dev",
-    "build": "next build && next export -o docs"
+    "build": "next build && next export -o docs && touch docs/.nojekyll"
   },
   "devDependencies": {
     "@babel/core": "^7.20.2",
