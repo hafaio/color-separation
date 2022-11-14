@@ -12,3 +12,4 @@ To Do
 - [ ] Shouldn't be too hard to also support stroke styles for those that have it.
 - [ ] Add drag and drop upload support.
 - [ ] It may be possible to compute rendered color, and use that instead of mandating inline css.
+- [ ] Current output is as a greyscale image, but we could have options like rgba or opacity.

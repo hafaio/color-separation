@@ -447,7 +447,8 @@ export default function App(): ReactElement {
         if (active) {
           for (const [color, elements] of parsed.elems) {
             const opacity = mapping.get(color)![i];
-            const grey = `rgba(0,0,0,${opacity})`;
+            const hex = Math.round(255 * (1 - opacity)).toString(16);
+            const grey = `#${hex}${hex}${hex}`;
             for (const elem of elements) {
               elem.style.fill = grey;
             }
