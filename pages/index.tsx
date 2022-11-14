@@ -9,6 +9,7 @@ import {
   Tooltip,
 } from "@chakra-ui/react";
 import { saveAs } from "file-saver";
+import Head from "next/head";
 import {
   ChangeEvent,
   PropsWithChildren,
@@ -328,7 +329,8 @@ function HelpText({ closeable }: { closeable: boolean }): ReactElement {
           <li>
             Upload your svg above. Your SVG can contain opacity, but{" "}
             <span className="italic">must not</span> contain overlapping
-            elements, embedded bitmaps, strokes, or gradients.
+            elements, embedded bitmaps, strokes, or gradients. All colors must
+            be inline css.
           </li>
           <li>Customize your color pallette by adding colors available.</li>
           <li>
@@ -515,6 +517,9 @@ export default function App(): ReactElement {
 
   return (
     <div className="h-screen w-screen flex flex-row">
+      <Head>
+        <title>Spot Color Separation</title>
+      </Head>
       <div className="w-72 h-full p-2 overflow-y-auto flex flex-col flex-shrink-0 justify-between">
         <div className="space-y-2 flex-grow flex flex-col">
           <h1 className="font-bold text-xl text-center">
