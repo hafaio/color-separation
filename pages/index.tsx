@@ -7,6 +7,7 @@ import {
   Select,
   Switch,
   Tooltip,
+  useToast,
 } from "@chakra-ui/react";
 import { saveAs } from "file-saver";
 import Head from "next/head";
@@ -329,8 +330,7 @@ function HelpText({ closeable }: { closeable: boolean }): ReactElement {
           <li>
             Upload your svg above. Your SVG can contain opacity, but{" "}
             <span className="italic">must not</span> contain overlapping
-            elements, embedded bitmaps, strokes, or gradients. All colors must
-            be inline css.
+            elements, embedded bitmaps, strokes, or gradients.
           </li>
           <li>Customize your color pallette by adding colors available.</li>
           <li>
@@ -363,6 +363,7 @@ export default function App(): ReactElement {
     () => setShowHelp(!showHelp),
     [showHelp, setShowHelp]
   );
+  const toast = useToast();
 
   const [fileName, setFileName] = useState<string | undefined>();
   const [parsed, setParsed] = useState<Parsed | undefined | null>();
@@ -462,34 +463,82 @@ export default function App(): ReactElement {
     }
   }, [parsed, mapping, colors, fileName]);
 
-  const onUpload = async (file: File) => {
-    setFileName(file.name);
-    setParsed(null);
-    setShowHelp(false);
-    const text = await file.text();
-    const parser = new DOMParser();
-    const svg = parser.parseFromString(text, "image/svg+xml");
-    const colorMap = new Map<string, SVGElement[]>();
-    for (const elem of svg.all) {
-      if (elem instanceof SVGElement) {
-        const fillColor = elem.style.fill;
-        if (fillColor) {
-          const color = parseCSS(fillColor);
-          const list = colorMap.get(color);
-          if (list) {
-            list.push(elem);
-          } else {
-            colorMap.set(color, [elem]);
+  const onUpload = useCallback(
+    async (file: File) => {
+      setFileName(file.name);
+      setParsed(null);
+      setShowHelp(false);
+      let error;
+      let div;
+      try {
+        const text = await file.text();
+        const parser = new DOMParser();
+        const svg = parser.parseFromString(text, "image/svg+xml");
+
+        // shenanigans to use get computed style
+        div = document.createElement("div");
+        div.style.display = "none";
+        const shadow = div.attachShadow({ mode: "open" });
+        for (const elem of svg.children) {
+          shadow.appendChild(elem);
+        }
+        document.documentElement.appendChild(div);
+
+        const colorMap = new Map<string, SVGElement[]>();
+        for (const elem of shadow.querySelectorAll("*")) {
+          if (elem instanceof SVGElement) {
+            const { fill, stroke } = getComputedStyle(elem);
+            if (fill && fill !== "none") {
+              try {
+                const color = parseCSS(fill);
+                const list = colorMap.get(color);
+                if (list) {
+                  list.push(elem);
+                } else {
+                  colorMap.set(color, [elem]);
+                }
+              } catch (ex) {
+                console.error("problem parsing color", ex);
+                error = "Problem parsing colors in SVG";
+                elem.style.fill = "none !important";
+              }
+            }
+            // FIXME stroke too
           }
         }
+
+        // restore svg document
+        for (const elem of shadow.children) {
+          svg.appendChild(elem);
+        }
+
+        setParsed({
+          raw: `data:image/svg+xml,${encodeURIComponent(text)}`,
+          doc: svg,
+          elems: colorMap,
+        });
+      } catch (ex) {
+        console.error(ex);
+        error = "Problem loading SVG";
+        setParsed(undefined);
+      } finally {
+        // remove temp div from document
+        try {
+          div && document.documentElement.removeChild(div);
+        } catch {
+          // noop
+        }
       }
-    }
-    setParsed({
-      raw: `data:image/svg+xml,${encodeURIComponent(text)}`,
-      doc: svg,
-      elems: colorMap,
-    });
-  };
+      if (error) {
+        toast({
+          title: error,
+          status: "error",
+          position: "bottom-left",
+        });
+      }
+    },
+    [setParsed, setFileName, setShowHelp, toast]
+  );
 
   const editor =
     parsed && !showHelp ? (

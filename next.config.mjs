@@ -7,4 +7,4 @@ export const webpack = (config) => {
 };
 export const reactStrictMode = true;
 export const assetPrefix =
-  process.env.NODE_ENV === "production" ? "/color-separation" : "";
+  process.env.NODE_ENV === "production" ? "/color-separation" : ".";
