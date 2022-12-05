@@ -27,6 +27,7 @@ import {
   FaGithub,
   FaInfoCircle,
 } from "react-icons/fa";
+import { mapGetDef } from "../utils/collections";
 import { parseCSS } from "../utils/color";
 import { colorSeparation } from "../utils/sep";
 
@@ -330,7 +331,7 @@ function HelpText({ closeable }: { closeable: boolean }): ReactElement {
           <li>
             Upload your svg above. Your SVG can contain opacity, but{" "}
             <span className="italic">must not</span> contain overlapping
-            elements, embedded bitmaps, strokes, or gradients.
+            elements, embedded bitmaps, or gradients.
           </li>
           <li>Customize your color pallette by adding colors available.</li>
           <li>
@@ -344,10 +345,15 @@ function HelpText({ closeable }: { closeable: boolean }): ReactElement {
   );
 }
 
+interface Elements {
+  fill: SVGElement[];
+  stroke: SVGElement[];
+}
+
 interface Parsed {
   raw: string;
   doc: Document;
-  elems: Map<string, SVGElement[]>;
+  elems: Map<string, Elements>;
 }
 
 type Action =
@@ -411,12 +417,15 @@ export default function App(): ReactElement {
       }
 
       const newMapping = new Map();
-      for (const [target, elements] of parsed.elems) {
+      for (const [target, { fill, stroke }] of parsed.elems) {
         const { opacities, color } = colorSeparation(target, pool, {
           quadratic,
         });
-        for (const elem of elements) {
+        for (const elem of fill) {
           elem.style.fill = color;
+        }
+        for (const elem of stroke) {
+          elem.style.stroke = color;
         }
         newMapping.set(target, opacities);
       }
@@ -430,9 +439,12 @@ export default function App(): ReactElement {
         newMapping,
       ]);
     } else {
-      for (const [color, elements] of parsed?.elems ?? []) {
-        for (const elem of elements) {
+      for (const [color, { fill, stroke }] of parsed?.elems ?? []) {
+        for (const elem of fill) {
           elem.style.fill = color;
+        }
+        for (const elem of stroke) {
+          elem.style.stroke = color;
         }
       }
       setAltered([undefined, new Map()]);
@@ -446,12 +458,15 @@ export default function App(): ReactElement {
       let i = 0;
       for (const [color, [name, active]] of colors) {
         if (active) {
-          for (const [color, elements] of parsed.elems) {
+          for (const [color, { fill, stroke }] of parsed.elems) {
             const opacity = mapping.get(color)![i];
             const hex = Math.round(255 * (1 - opacity)).toString(16);
             const grey = `#${hex}${hex}${hex}`;
-            for (const elem of elements) {
+            for (const elem of fill) {
               elem.style.fill = grey;
+            }
+            for (const elem of stroke) {
+              elem.style.stroke = grey;
             }
           }
           const rendered = serial.serializeToString(parsed.doc);
@@ -484,26 +499,38 @@ export default function App(): ReactElement {
         }
         document.documentElement.appendChild(div);
 
-        const colorMap = new Map<string, SVGElement[]>();
+        const colorMap = new Map<string, Elements>();
         for (const elem of shadow.querySelectorAll("*")) {
           if (elem instanceof SVGElement) {
             const { fill, stroke } = getComputedStyle(elem);
             if (fill && fill !== "none") {
               try {
                 const color = parseCSS(fill);
-                const list = colorMap.get(color);
-                if (list) {
-                  list.push(elem);
-                } else {
-                  colorMap.set(color, [elem]);
-                }
+                const list = mapGetDef(colorMap, color, () => ({
+                  fill: [],
+                  stroke: [],
+                })).fill;
+                list.push(elem);
               } catch (ex) {
                 console.error("problem parsing color", ex);
                 error = "Problem parsing colors in SVG";
-                elem.style.fill = "none !important";
+                elem.style.fill = "none";
               }
             }
-            // FIXME stroke too
+            if (stroke && stroke !== "none") {
+              try {
+                const color = parseCSS(stroke);
+                const list = mapGetDef(colorMap, color, () => ({
+                  fill: [],
+                  stroke: [],
+                })).stroke;
+                list.push(elem);
+              } catch (ex) {
+                console.error("problem parsing color", ex);
+                error = "Problem parsing colors in SVG";
+                elem.style.stroke = "none";
+              }
+            }
           }
         }
 

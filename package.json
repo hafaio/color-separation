@@ -8,8 +8,9 @@
   "packageManager": "yarn@3.2.4",
   "scripts": {
     "fmt": "prettier --write --cache 'pages/**/*.tsx' 'utils/*.ts' next.config.mjs tailwind.config.js postcss.config.js package.json",
-    "lint": "pnpify tsc && next lint && eslint 'pages/**/*.tsx' 'utils/*.ts'",
-    "test": "jest",
+    "lint:tsc": "pnpify tsc",
+    "lint": "yarn lint:tsc && next lint && eslint 'pages/**/*.tsx' 'utils/*.ts'",
+    "test": "jest --coverage",
     "dev": "next dev",
     "build": "next build && next export -o docs && touch docs/.nojekyll"
   },
