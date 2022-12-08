@@ -3,6 +3,7 @@ import {
   IconButton,
   Input,
   InputGroup,
+  InputLeftAddon,
   InputRightAddon,
   Select,
   Switch,
@@ -120,10 +121,14 @@ function PalletteInput({
   colors,
   setPallette,
   addColor,
+  paperColor,
+  setPaperColor,
 }: {
   colors: Map<string, unknown>;
   setPallette: (colors: readonly (readonly [string, string])[]) => void;
   addColor: (color: string, name: string) => void;
+  paperColor: string;
+  setPaperColor: (color: string) => void;
 }): ReactElement {
   const palletteChange = (evt: ChangeEvent<HTMLSelectElement>) => {
     const val = evt.target.value;
@@ -147,6 +152,10 @@ function PalletteInput({
   const colorChange = useCallback(
     (evt: ChangeEvent<HTMLInputElement>) => setColor(evt.target.value),
     [setColor]
+  );
+  const paperColorChange = useCallback(
+    (evt: ChangeEvent<HTMLInputElement>) => setPaperColor(evt.target.value),
+    [setPaperColor]
   );
 
   const addClick = useCallback(
@@ -188,6 +197,12 @@ function PalletteInput({
         <option value="riso">Risograph</option>
         <option value="cmyk">CMYK</option>
       </Select>
+      <InputGroup>
+        <InputLeftAddon>
+          <Tooltip label="Set the printed paper color">Paper Color</Tooltip>
+        </InputLeftAddon>
+        <Input type="color" value={paperColor} onChange={paperColorChange} />
+      </InputGroup>
     </>
   );
 }
@@ -220,6 +235,8 @@ function EditorHeader({ children }: PropsWithChildren): ReactElement {
 function Editor({
   colors,
   modifyColors,
+  paperColor,
+  setPaperColor,
   quadratic,
   toggleQuadratic,
   download,
@@ -230,6 +247,8 @@ function Editor({
 }: {
   colors: Map<string, [string, boolean]>;
   modifyColors: (action: Action) => void;
+  paperColor: string;
+  setPaperColor: (color: string) => void;
   quadratic: boolean;
   toggleQuadratic: () => void;
   download: () => void;
@@ -285,8 +304,10 @@ function Editor({
       <p>Add new colors or reset to a pallette</p>
       <PalletteInput
         setPallette={setPallette}
-        addColor={addColor}
         colors={colors}
+        addColor={addColor}
+        paperColor={paperColor}
+        setPaperColor={setPaperColor}
       />
       <div className="flex flex-row justify-between items-center">
         <label htmlFor="quadratic">
@@ -396,6 +417,7 @@ export default function App(): ReactElement {
     },
     new Map<string, [string, boolean]>()
   );
+  const [paperColor, setPaperColor] = useState("#ffffff");
 
   const [[altered, mapping], setAltered] = useState<
     [string | undefined, Map<string, number[]>]
@@ -420,7 +442,9 @@ export default function App(): ReactElement {
       for (const [target, { fill, stroke }] of parsed.elems) {
         const { opacities, color } = colorSeparation(target, pool, {
           quadratic,
+          paper: paperColor,
         });
+
         for (const elem of fill) {
           elem.style.fill = color;
         }
@@ -429,11 +453,11 @@ export default function App(): ReactElement {
         }
         newMapping.set(target, opacities);
       }
+
+      // TODO there's a bug where sometimes specific colors are off. These
+      // aren't off on export, so it must have to do with the rendering...
       const serial = new XMLSerializer();
       const rendered = serial.serializeToString(parsed.doc);
-
-      // TODO there's a bug where we don't reset every color on removal, and
-      // it's not clear why...
       setAltered([
         `data:image/svg+xml,${encodeURIComponent(rendered)}`,
         newMapping,
@@ -449,7 +473,7 @@ export default function App(): ReactElement {
       }
       setAltered([undefined, new Map()]);
     }
-  }, [colors, quadratic, parsed, setAltered]);
+  }, [colors, quadratic, parsed, setAltered, paperColor]);
 
   const download = useCallback(() => {
     if (parsed && mapping.size && fileName) {
@@ -572,6 +596,8 @@ export default function App(): ReactElement {
       <Editor
         colors={colors}
         modifyColors={modifyColors}
+        paperColor={paperColor}
+        setPaperColor={setPaperColor}
         quadratic={quadratic}
         toggleQuadratic={toggleQuadratic}
         download={download}

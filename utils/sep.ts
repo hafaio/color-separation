@@ -148,14 +148,19 @@ interface ColoredResult extends Result {
 export function colorSeparation(
   target: string,
   pool: readonly string[],
-  { quadratic = true }: { quadratic?: boolean } = {}
+  {
+    quadratic = true,
+    paper = "#ffffff",
+  }: { quadratic?: boolean; paper?: string } = {}
 ): ColoredResult {
   const cmyTarget = parseCMYColor(target);
+  const cmyPaper = parseCMYColor(paper);
+  const cmyDiff = cmyTarget.map((c, i) => c - cmyPaper[i]) as CMYColor;
   const cmyPool = pool.map(parseCMYColor);
   const { error, opacities } = quadratic
-    ? colorSeparationQuadratic(cmyTarget, cmyPool)
-    : colorSeparationLinear(cmyTarget, cmyPool);
-  const closest: CMYColor = [0, 0, 0];
+    ? colorSeparationQuadratic(cmyDiff, cmyPool)
+    : colorSeparationLinear(cmyDiff, cmyPool);
+  const closest: CMYColor = [...cmyPaper];
   for (const [i, color] of cmyPool.entries()) {
     const opacity = opacities[i];
     for (const [j, c] of color.entries()) {
