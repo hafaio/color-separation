@@ -242,8 +242,6 @@ function Editor({
   download,
   showRaw,
   setShowRaw,
-  fit,
-  toggleFit,
 }: {
   colors: Map<string, [string, boolean]>;
   modifyColors: (action: Action) => void;
@@ -254,8 +252,6 @@ function Editor({
   download: () => void;
   showRaw: boolean;
   setShowRaw: (val: boolean) => void;
-  fit: boolean;
-  toggleFit: () => void;
 }): ReactElement {
   const exportText = colors.size
     ? undefined
@@ -320,17 +316,6 @@ function Editor({
           colorScheme="gray"
         />
       </div>
-      <div className="flex flex-row justify-between items-center">
-        <label htmlFor="image-fit">
-          <EditorHeader>Fit Image</EditorHeader>
-        </label>
-        <Switch
-          id="image-fit"
-          colorScheme="gray"
-          isChecked={fit}
-          onChange={toggleFit}
-        />
-      </div>
     </>
   );
 }
@@ -383,7 +368,6 @@ type Action =
   | { action: "toggle"; color: string };
 
 export default function App(): ReactElement {
-  const [fit, toggleFit] = useReducer((current: boolean) => !current, true);
   const [showRaw, setShowRaw] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const toggleHelp = useCallback(
@@ -603,8 +587,6 @@ export default function App(): ReactElement {
         download={download}
         showRaw={showRaw}
         setShowRaw={setShowRaw}
-        fit={fit}
-        toggleFit={toggleFit}
       />
     ) : (
       <HelpText closeable={!!parsed} />
@@ -614,7 +596,7 @@ export default function App(): ReactElement {
     <img
       src={src}
       alt="rendered separation"
-      className={`h-full w-full ${fit ? "object-contain" : "object-cover"}`}
+      className="h-full w-full object-contain"
     />
   ) : null;
 
