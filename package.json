@@ -45,6 +45,7 @@
     "quadprog": "^1.6.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-dropzone": "^14.2.3",
     "react-icons": "^4.7.1",
     "tailwindcss": "^3.2.4"
   },

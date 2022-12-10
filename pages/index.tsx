@@ -9,6 +9,7 @@ import {
   RadioGroup,
   Select,
   Tooltip,
+  useColorModeValue,
   useToast,
 } from "@chakra-ui/react";
 import { saveAs } from "file-saver";
@@ -23,6 +24,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { FileRejection, useDropzone } from "react-dropzone";
 import {
   FaFileDownload,
   FaFileUpload,
@@ -333,9 +335,9 @@ function HelpText({ closeable }: { closeable: boolean }): ReactElement {
         </p>
         <ol className="list-decimal ml-4">
           <li>
-            Upload your svg above. Your SVG can contain opacity, but{" "}
-            <span className="italic">must not</span> contain overlapping
-            elements, embedded bitmaps, or gradients.
+            Upload your SVG by clicking above or dropping it anywhere. Your SVG
+            can contain opacity, but <span className="italic">must not</span>{" "}
+            contain overlapping elements, embedded bitmaps, or gradients.
           </li>
           <li>Customize your color pallette by adding colors available.</li>
           <li>
@@ -345,6 +347,26 @@ function HelpText({ closeable }: { closeable: boolean }): ReactElement {
         </ol>
       </div>
       {footer}
+    </div>
+  );
+}
+
+function DropModal({ show }: { show: boolean }): ReactElement {
+  return (
+    <div
+      className={`w-screen h-screen fixed backdrop-blur-sm z-10 flex flex-col items-center justify-center ${
+        show ? "block" : "hidden"
+      }`}
+    >
+      <div
+        className={`w-96 p-4 space-y-2 rounded-md shadow-md ${useColorModeValue(
+          "bg-white",
+          "bg-gray-900"
+        )}`}
+      >
+        <h1 className="font-bold text-lg">Drag & Drop an SVG to Upload</h1>
+        <p>Drop a compatible SVG anywhere to begin separating its colors.</p>
+      </div>
     </div>
   );
 }
@@ -595,11 +617,42 @@ export default function App(): ReactElement {
     />
   ) : null;
 
+  const onDrop = useCallback(
+    (accepted: File[], rejected: FileRejection[]) => {
+      const [file] = accepted;
+      if (file) {
+        onUpload(file);
+      }
+      if (rejected.length) {
+        toast({
+          title: "Dropped file was not an SVG",
+          status: "error",
+          position: "bottom-left",
+        });
+      }
+    },
+    [onUpload, toast]
+  );
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      "image/svg+xml": [],
+    },
+    multiple: false,
+    noClick: true,
+  });
+
   return (
-    <div className="h-screen w-screen flex flex-row">
+    <div
+      {...getRootProps({
+        className: "h-screen w-screen flex flex-row",
+      })}
+    >
       <Head>
         <title>Spot Color Separation</title>
       </Head>
+      <input {...getInputProps()} />
+      <DropModal show={isDragActive} />
       <div className="w-72 h-full p-2 overflow-y-auto flex flex-col flex-shrink-0 justify-between">
         <div className="space-y-2 flex-grow flex flex-col">
           <h1 className="font-bold text-xl text-center">

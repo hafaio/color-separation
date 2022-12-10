@@ -9,5 +9,4 @@ A spot color separation webapp designed for risograph. Go to the
 To Do
 -----
 
-- [ ] Add drag and drop upload support.
-- [ ] Current output is as a greyscale image, but we could have options like rgba or opacity.
+- [ ] Find a way to allow zooming and panning of image.
