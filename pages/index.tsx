@@ -5,9 +5,12 @@ import {
   InputGroup,
   InputLeftAddon,
   InputRightAddon,
-  Radio,
-  RadioGroup,
   Select,
+  Slider,
+  SliderFilledTrack,
+  SliderThumb,
+  SliderTrack,
+  Switch,
   Tooltip,
   useColorModeValue,
   useToast,
@@ -33,7 +36,7 @@ import {
 } from "react-icons/fa";
 import { mapGetDef } from "../utils/collections";
 import { parseCSS } from "../utils/color";
-import { colorSeparation, Losses } from "../utils/sep";
+import { colorSeparation } from "../utils/sep";
 
 function UploadButton({
   onFile,
@@ -240,8 +243,10 @@ function Editor({
   modifyColors,
   paperColor,
   setPaperColor,
-  loss,
-  setLoss,
+  quadratic,
+  toggleQuad,
+  increments,
+  setIncrements,
   download,
   showRaw,
   setShowRaw,
@@ -250,8 +255,10 @@ function Editor({
   modifyColors: (action: Action) => void;
   paperColor: string;
   setPaperColor: (color: string) => void;
-  loss: string;
-  setLoss: (l: Losses) => void;
+  quadratic: boolean;
+  toggleQuad: () => void;
+  increments: number;
+  setIncrements: (inc: number) => void;
   download: () => void;
   showRaw: boolean;
   setShowRaw: (val: boolean) => void;
@@ -308,14 +315,30 @@ function Editor({
         paperColor={paperColor}
         setPaperColor={setPaperColor}
       />
-      <EditorHeader>Style</EditorHeader>
-      <RadioGroup onChange={setLoss} value={loss}>
-        <div className="flex flex-col space-y-2">
-          <Radio value="quadratic">Quadratic</Radio>
-          <Radio value="linear">Linear</Radio>
-          <Radio value="posterize">Posterize</Radio>
+      <EditorHeader>Dicretizations</EditorHeader>
+      <p>Drag the slider to change the number of dicrete opacities</p>
+      <div className="px-4">
+        <Slider
+          defaultValue={increments}
+          onChange={setIncrements}
+          min={0}
+          max={7}
+          step={1}
+        >
+          <SliderTrack>
+            <SliderFilledTrack />
+          </SliderTrack>
+          <SliderThumb />
+        </Slider>
+      </div>
+      <Tooltip label="Toggle for different separation">
+        <div className="flex flex-row justify-between items-baseline">
+          <label htmlFor="quadratic">
+            <EditorHeader>Quadratic Loss</EditorHeader>
+          </label>
+          <Switch id="quadratic" onChange={toggleQuad} isChecked={quadratic} />
         </div>
-      </RadioGroup>
+      </Tooltip>
     </>
   );
 }
@@ -426,7 +449,8 @@ export default function App(): ReactElement {
   const [[altered, mapping], setAltered] = useState<
     [string | undefined, Map<string, number[]>]
   >([undefined, new Map<string, number[]>()]);
-  const [loss, setLoss] = useState<Losses>("quadratic");
+  const [quadratic, toggleQuad] = useReducer((state: boolean) => !state, false);
+  const [increments, setIncrements] = useState(0);
 
   useEffect(() => {
     if (!parsed) {
@@ -442,8 +466,9 @@ export default function App(): ReactElement {
       const newMapping = new Map();
       for (const [target, { fill, stroke }] of parsed.elems) {
         const { opacities, color } = colorSeparation(target, pool, {
-          variant: loss,
+          quadratic,
           paper: paperColor,
+          increments,
         });
 
         for (const elem of fill) {
@@ -474,7 +499,7 @@ export default function App(): ReactElement {
       }
       setAltered([undefined, new Map()]);
     }
-  }, [colors, loss, parsed, setAltered, paperColor]);
+  }, [colors, quadratic, increments, parsed, setAltered, paperColor]);
 
   const download = useCallback(() => {
     if (parsed && mapping.size && fileName) {
@@ -599,8 +624,10 @@ export default function App(): ReactElement {
         modifyColors={modifyColors}
         paperColor={paperColor}
         setPaperColor={setPaperColor}
-        loss={loss}
-        setLoss={setLoss}
+        quadratic={quadratic}
+        toggleQuad={toggleQuad}
+        increments={increments}
+        setIncrements={setIncrements}
         download={download}
         showRaw={showRaw}
         setShowRaw={setShowRaw}

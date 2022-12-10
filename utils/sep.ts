@@ -17,8 +17,6 @@ import { Constraint, Solve as solveLP, Variable } from "javascript-lp-solver";
 import { solveQP } from "quadprog";
 import { formatColor } from "./color";
 
-// FIXME change posterize to steps?
-
 type CMYColor = [number, number, number];
 
 function parseCMYColor(color: string): CMYColor {
@@ -39,8 +37,9 @@ interface Result {
 function colorSeparationLinear(
   target: CMYColor,
   pool: readonly CMYColor[],
-  posterize: boolean = false
+  increments: number
 ): Result {
+  const mult = Math.max(increments, 1);
   const weighting = 1e-4;
   const weights = pool.map(
     (color) => weighting * color.reduce((s, v) => s + (1 - v) / 3, 0)
@@ -67,12 +66,12 @@ function colorSeparationLinear(
     for (const [j, seper] of pool.entries()) {
       const sep = seper[i];
       const mix = `mix ${j}`;
-      variables[mix][up] = sep;
-      variables[mix][dn] = sep;
+      variables[mix][up] = sep / mult;
+      variables[mix][dn] = sep / mult;
     }
   }
 
-  if (posterize) {
+  if (increments > 0) {
     for (const [j, weight] of weights.entries()) {
       ints[`mix ${j}`] = 1;
     }
@@ -90,7 +89,7 @@ function colorSeparationLinear(
   );
   /* istanbul ignore else */
   if (feasible && bounded) {
-    const opacities = pool.map((_, i) => vals[`mix ${i}`] ?? 0);
+    const opacities = pool.map((_, i) => (vals[`mix ${i}`] ?? 0) / mult);
     const cond = opacities.reduce((s, v, i) => s + weights[i] * v, 0);
     return {
       error: (result - cond) / 3,
@@ -111,7 +110,8 @@ function dot(left: readonly number[], right: readonly number[]): number {
 
 function colorSeparationQuadratic(
   target: CMYColor,
-  pool: readonly CMYColor[]
+  pool: readonly CMYColor[],
+  increments: number
 ): Result {
   // NOTE since colors can be linearly dependent (and will necessarily be if
   // there's more than three, we help make the matrix positive definite by
@@ -162,7 +162,17 @@ function colorSeparationQuadratic(
   } else {
     return {
       error: Math.sqrt(Math.max(2 * error + err - cond, 0)) / 3,
-      opacities: result.map((o) => Math.min(Math.max(0, o), 1)),
+      opacities: result.map((opacity) => {
+        const normed = Math.min(Math.max(0, opacity), 1);
+        if (increments > 0) {
+          // NOTE we don't have a way to force integer constraints. We could
+          // implement convex rounding, but that's probably overkill when
+          // linear will do it well
+          return Math.round(normed * increments) / increments;
+        } else {
+          return normed;
+        }
+      }),
     };
   }
 }
@@ -171,26 +181,34 @@ interface ColoredResult extends Result {
   color: string;
 }
 
-export type Losses = "quadratic" | "linear" | "posterize";
-
+/**
+ * Perform approximate subtractive color separation
+ *
+ * All colors should be in standard (non-alpha) hex, e.g. "#rrggbb".
+ *
+ * @param target - the target color
+ * @param pool - an array of the available colors
+ * @param quadratic - true if using quadratic optimization
+ * @param paper - the paper color, white being the most general
+ * @param increments - the number of color increments to use; opacities will
+ *   always be multiples of 1 / increments; if 0 then use continuous increments
+ */
 export function colorSeparation(
   target: string,
   pool: readonly string[],
   {
-    variant = "quadratic",
+    quadratic = true,
     paper = "#ffffff",
-  }: { variant?: Losses; paper?: string } = {}
+    increments = 0,
+  }: { quadratic?: boolean; paper?: string; increments?: number } = {}
 ): ColoredResult {
   const cmyTarget = parseCMYColor(target);
   const cmyPaper = parseCMYColor(paper);
   const cmyDiff = cmyTarget.map((c, i) => c - cmyPaper[i]) as CMYColor;
   const cmyPool = pool.map(parseCMYColor);
-  const { error, opacities } =
-    variant === "quadratic"
-      ? colorSeparationQuadratic(cmyDiff, cmyPool)
-      : variant === "linear"
-      ? colorSeparationLinear(cmyDiff, cmyPool)
-      : colorSeparationLinear(cmyDiff, cmyPool, true);
+  const { error, opacities } = quadratic
+    ? colorSeparationQuadratic(cmyDiff, cmyPool, increments)
+    : colorSeparationLinear(cmyDiff, cmyPool, increments);
   const closest: CMYColor = [...cmyPaper];
   for (const [i, color] of cmyPool.entries()) {
     const opacity = opacities[i];
