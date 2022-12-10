@@ -441,7 +441,7 @@ export default function App(): ReactElement {
       const newMapping = new Map();
       for (const [target, { fill, stroke }] of parsed.elems) {
         const { opacities, color } = colorSeparation(target, pool, {
-          quadratic,
+          variant: quadratic ? "quadratic" : "linear",
           paper: paperColor,
         });
 

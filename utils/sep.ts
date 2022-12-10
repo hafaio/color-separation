@@ -1,6 +1,23 @@
+/**
+ * Utilities for separating a color into stop colors using various techniques.
+ *
+ * The current implementation uses a simple subtractive color model that seems to work reasonably well.
+ *
+ * @remkarks
+ *
+ * The current model can saturate in CMY space (e.g. produce values greater
+ * than one). The current optimization techniques can't handle saturation
+ * appropriately, meaning that errors will be larger than necessary for colors
+ * where this happens. In the future it might make sense to use arbitrary
+ * convex optimization which can handle saturation.
+ *
+ * @packageDocumentation
+ */
 import { Constraint, Solve as solveLP, Variable } from "javascript-lp-solver";
 import { solveQP } from "quadprog";
 import { formatColor } from "./color";
+
+// FIXME add posterize option to Linear that makes it 0 or 1
 
 type CMYColor = [number, number, number];
 
@@ -21,7 +38,8 @@ interface Result {
 
 function colorSeparationLinear(
   target: CMYColor,
-  pool: readonly CMYColor[]
+  pool: readonly CMYColor[],
+  posterize: boolean = false
 ): Result {
   const weighting = 1e-4;
   const weights = pool.map(
@@ -30,6 +48,7 @@ function colorSeparationLinear(
 
   const constraints: Record<string, Constraint> = {};
   const variables: Record<string, Variable> = {};
+  const ints: Record<string, 1> = {};
 
   for (const [j, weight] of weights.entries()) {
     variables[`mix ${j}`] = { error: weight };
@@ -53,6 +72,12 @@ function colorSeparationLinear(
     }
   }
 
+  if (posterize) {
+    for (const [j, weight] of weights.entries()) {
+      ints[`mix ${j}`] = 1;
+    }
+  }
+
   const { result, feasible, bounded, ...vals } = solveLP.call(
     {},
     {
@@ -60,6 +85,7 @@ function colorSeparationLinear(
       opType: "min",
       constraints,
       variables,
+      ints,
     }
   );
   /* istanbul ignore else */
@@ -149,17 +175,20 @@ export function colorSeparation(
   target: string,
   pool: readonly string[],
   {
-    quadratic = true,
+    variant = "quadratic",
     paper = "#ffffff",
-  }: { quadratic?: boolean; paper?: string } = {}
+  }: { variant?: "quadratic" | "linear" | "posterize"; paper?: string } = {}
 ): ColoredResult {
   const cmyTarget = parseCMYColor(target);
   const cmyPaper = parseCMYColor(paper);
   const cmyDiff = cmyTarget.map((c, i) => c - cmyPaper[i]) as CMYColor;
   const cmyPool = pool.map(parseCMYColor);
-  const { error, opacities } = quadratic
-    ? colorSeparationQuadratic(cmyDiff, cmyPool)
-    : colorSeparationLinear(cmyDiff, cmyPool);
+  const { error, opacities } =
+    variant === "quadratic"
+      ? colorSeparationQuadratic(cmyDiff, cmyPool)
+      : variant === "linear"
+      ? colorSeparationLinear(cmyDiff, cmyPool)
+      : colorSeparationLinear(cmyDiff, cmyPool, true);
   const closest: CMYColor = [...cmyPaper];
   for (const [i, color] of cmyPool.entries()) {
     const opacity = opacities[i];
@@ -167,5 +196,9 @@ export function colorSeparation(
       closest[j] += c * opacity;
     }
   }
-  return { error, opacities, color: formatCMYColor(closest) };
+  return {
+    error,
+    opacities,
+    color: formatCMYColor(closest.map((c) => Math.min(c, 1)) as CMYColor),
+  };
 }
