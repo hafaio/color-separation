@@ -17,7 +17,7 @@ import { Constraint, Solve as solveLP, Variable } from "javascript-lp-solver";
 import { solveQP } from "quadprog";
 import { formatColor } from "./color";
 
-// FIXME add posterize option to Linear that makes it 0 or 1
+// FIXME change posterize to steps?
 
 type CMYColor = [number, number, number];
 
@@ -171,13 +171,15 @@ interface ColoredResult extends Result {
   color: string;
 }
 
+export type Losses = "quadratic" | "linear" | "posterize";
+
 export function colorSeparation(
   target: string,
   pool: readonly string[],
   {
     variant = "quadratic",
     paper = "#ffffff",
-  }: { variant?: "quadratic" | "linear" | "posterize"; paper?: string } = {}
+  }: { variant?: Losses; paper?: string } = {}
 ): ColoredResult {
   const cmyTarget = parseCMYColor(target);
   const cmyPaper = parseCMYColor(paper);

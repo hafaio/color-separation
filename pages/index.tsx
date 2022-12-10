@@ -5,8 +5,9 @@ import {
   InputGroup,
   InputLeftAddon,
   InputRightAddon,
+  Radio,
+  RadioGroup,
   Select,
-  Switch,
   Tooltip,
   useToast,
 } from "@chakra-ui/react";
@@ -30,7 +31,7 @@ import {
 } from "react-icons/fa";
 import { mapGetDef } from "../utils/collections";
 import { parseCSS } from "../utils/color";
-import { colorSeparation } from "../utils/sep";
+import { colorSeparation, Losses } from "../utils/sep";
 
 function UploadButton({
   onFile,
@@ -237,8 +238,8 @@ function Editor({
   modifyColors,
   paperColor,
   setPaperColor,
-  quadratic,
-  toggleQuadratic,
+  loss,
+  setLoss,
   download,
   showRaw,
   setShowRaw,
@@ -247,8 +248,8 @@ function Editor({
   modifyColors: (action: Action) => void;
   paperColor: string;
   setPaperColor: (color: string) => void;
-  quadratic: boolean;
-  toggleQuadratic: () => void;
+  loss: string;
+  setLoss: (l: Losses) => void;
   download: () => void;
   showRaw: boolean;
   setShowRaw: (val: boolean) => void;
@@ -305,17 +306,14 @@ function Editor({
         paperColor={paperColor}
         setPaperColor={setPaperColor}
       />
-      <div className="flex flex-row justify-between items-center">
-        <label htmlFor="quadratic">
-          <EditorHeader>Quadratic Loss</EditorHeader>
-        </label>
-        <Switch
-          id="quadratic"
-          isChecked={quadratic}
-          onChange={toggleQuadratic}
-          colorScheme="gray"
-        />
-      </div>
+      <EditorHeader>Style</EditorHeader>
+      <RadioGroup onChange={setLoss} value={loss}>
+        <div className="flex flex-col space-y-2">
+          <Radio value="quadratic">Quadratic</Radio>
+          <Radio value="linear">Linear</Radio>
+          <Radio value="posterize">Posterize</Radio>
+        </div>
+      </RadioGroup>
     </>
   );
 }
@@ -406,10 +404,7 @@ export default function App(): ReactElement {
   const [[altered, mapping], setAltered] = useState<
     [string | undefined, Map<string, number[]>]
   >([undefined, new Map<string, number[]>()]);
-  const [quadratic, toggleQuadratic] = useReducer(
-    (quad: boolean) => !quad,
-    true
-  );
+  const [loss, setLoss] = useState<Losses>("quadratic");
 
   useEffect(() => {
     if (!parsed) {
@@ -425,7 +420,7 @@ export default function App(): ReactElement {
       const newMapping = new Map();
       for (const [target, { fill, stroke }] of parsed.elems) {
         const { opacities, color } = colorSeparation(target, pool, {
-          variant: quadratic ? "quadratic" : "linear",
+          variant: loss,
           paper: paperColor,
         });
 
@@ -457,7 +452,7 @@ export default function App(): ReactElement {
       }
       setAltered([undefined, new Map()]);
     }
-  }, [colors, quadratic, parsed, setAltered, paperColor]);
+  }, [colors, loss, parsed, setAltered, paperColor]);
 
   const download = useCallback(() => {
     if (parsed && mapping.size && fileName) {
@@ -582,8 +577,8 @@ export default function App(): ReactElement {
         modifyColors={modifyColors}
         paperColor={paperColor}
         setPaperColor={setPaperColor}
-        quadratic={quadratic}
-        toggleQuadratic={toggleQuadratic}
+        loss={loss}
+        setLoss={setLoss}
         download={download}
         showRaw={showRaw}
         setShowRaw={setShowRaw}
