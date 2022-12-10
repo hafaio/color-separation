@@ -1,8 +1,4 @@
-import {
-  ChakraProvider,
-  extendTheme,
-  localStorageManager,
-} from "@chakra-ui/react";
+import { ChakraProvider, extendTheme } from "@chakra-ui/react";
 import type { AppProps } from "next/app";
 import "../styles/global.css";
 
@@ -12,7 +8,7 @@ const theme = extendTheme({
 
 export default function MyApp({ Component, pageProps }: AppProps) {
   return (
-    <ChakraProvider colorModeManager={localStorageManager} theme={theme}>
+    <ChakraProvider theme={theme}>
       <Component {...pageProps} />
     </ChakraProvider>
   );
