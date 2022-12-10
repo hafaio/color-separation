@@ -2386,7 +2386,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@chakra-ui/system@npm:2.3.4":
+"@chakra-ui/system@npm:2.3.4, @chakra-ui/system@npm:^2.3.4":
   version: 2.3.4
   resolution: "@chakra-ui/system@npm:2.3.4"
   dependencies:
@@ -4618,6 +4618,7 @@ __metadata:
     "@babel/preset-typescript": ^7.18.6
     "@chakra-ui/icons": ^2.0.13
     "@chakra-ui/react": ^2.4.2
+    "@chakra-ui/system": ^2.3.4
     "@emotion/react": ^11.10.5
     "@emotion/styled": ^11.10.5
     "@types/file-saver": ^2.0.5
