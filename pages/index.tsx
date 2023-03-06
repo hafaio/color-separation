@@ -244,6 +244,8 @@ function Editor({
   setPaperColor,
   quadratic,
   toggleQuad,
+  usePaper,
+  togglePaper,
   increments,
   setIncrements,
   download,
@@ -256,6 +258,8 @@ function Editor({
   setPaperColor: (color: string) => void;
   quadratic: boolean;
   toggleQuad: () => void;
+  usePaper: boolean;
+  togglePaper: () => void;
   increments: number;
   setIncrements: (inc: number) => void;
   download: () => void;
@@ -336,6 +340,18 @@ function Editor({
             <EditorHeader>Quadratic Loss</EditorHeader>
           </label>
           <Switch id="quadratic" onChange={toggleQuad} isChecked={quadratic} />
+        </div>
+      </Tooltip>
+      <Tooltip label="Account for paper color when doing separation">
+        <div className="flex flex-row justify-between items-baseline">
+          <label htmlFor="account-paper-color">
+            <EditorHeader>Account for Paper Color</EditorHeader>
+          </label>
+          <Switch
+            id="account-paper-color"
+            onChange={togglePaper}
+            isChecked={usePaper}
+          />
         </div>
       </Tooltip>
     </>
@@ -449,6 +465,7 @@ export default function App(): ReactElement {
     [string | undefined, Map<string, number[]>]
   >([undefined, new Map<string, number[]>()]);
   const [quadratic, toggleQuad] = useReducer((state: boolean) => !state, false);
+  const [usePaper, togglePaper] = useReducer((state: boolean) => !state, true);
   const [increments, setIncrements] = useState(0);
 
   useEffect(() => {
@@ -469,6 +486,7 @@ export default function App(): ReactElement {
           quadratic,
           paper: paperColor,
           increments,
+          factorPaper: usePaper,
         });
         newMapping.set(target, opacities);
         update.set(target, color);
@@ -483,7 +501,7 @@ export default function App(): ReactElement {
         newMapping,
       ]);
     }
-  }, [colors, quadratic, increments, parsed, setAltered, paperColor]);
+  }, [colors, quadratic, increments, parsed, setAltered, paperColor, usePaper]);
 
   const download = useCallback(() => {
     if (parsed && mapping.size && fileName) {
@@ -548,6 +566,8 @@ export default function App(): ReactElement {
         setPaperColor={setPaperColor}
         quadratic={quadratic}
         toggleQuad={toggleQuad}
+        usePaper={usePaper}
+        togglePaper={togglePaper}
         increments={increments}
         setIncrements={setIncrements}
         download={download}

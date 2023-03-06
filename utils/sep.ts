@@ -200,15 +200,25 @@ export function colorSeparation(
     quadratic = true,
     paper = "#ffffff",
     increments = 0,
-  }: { quadratic?: boolean; paper?: string; increments?: number } = {}
+    factorPaper = true,
+  }: {
+    quadratic?: boolean;
+    paper?: string;
+    increments?: number;
+    factorPaper?: boolean;
+  } = {}
 ): ColoredResult {
-  const cmyTarget = parseCMYColor(target);
+  let cmyTarget = parseCMYColor(target);
   const cmyPaper = parseCMYColor(paper);
-  const cmyDiff = cmyTarget.map((c, i) => c - cmyPaper[i]) as CMYColor;
+  if (factorPaper) {
+    cmyTarget = cmyTarget.map((c, i) =>
+      Math.max(c - cmyPaper[i], 0)
+    ) as CMYColor;
+  }
   const cmyPool = pool.map(parseCMYColor);
   const { error, opacities } = quadratic
-    ? colorSeparationQuadratic(cmyDiff, cmyPool, increments)
-    : colorSeparationLinear(cmyDiff, cmyPool, increments);
+    ? colorSeparationQuadratic(cmyTarget, cmyPool, increments)
+    : colorSeparationLinear(cmyTarget, cmyPool, increments);
   const closest: CMYColor = [...cmyPaper];
   for (const [i, color] of cmyPool.entries()) {
     const opacity = opacities[i];
