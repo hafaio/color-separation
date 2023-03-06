@@ -34,8 +34,7 @@ import {
   FaGithub,
   FaInfoCircle,
 } from "react-icons/fa";
-import { mapGetDef } from "../utils/collections";
-import { parseCSS } from "../utils/color";
+import { extractColors, updateColors } from "../utils/extract";
 import { colorSeparation } from "../utils/sep";
 
 function UploadButton({
@@ -400,9 +399,9 @@ interface Elements {
 }
 
 interface Parsed {
-  raw: string;
-  doc: Document;
-  elems: Map<string, Elements>;
+  readonly raw: string;
+  readonly doc: Document;
+  readonly colors: readonly string[];
 }
 
 type Action =
@@ -453,9 +452,9 @@ export default function App(): ReactElement {
   const [increments, setIncrements] = useState(0);
 
   useEffect(() => {
-    if (!parsed) {
-      setAltered([undefined, new Map()]);
-    } else if ([...colors.values()].some(([, active]) => active)) {
+    if (!parsed || ![...colors.values()].some(([, active]) => active)) {
+      setAltered([undefined, new Map<string, number[]>()]);
+    } else {
       const pool = [];
       for (const [color, [, active]] of colors) {
         if (active) {
@@ -463,41 +462,26 @@ export default function App(): ReactElement {
         }
       }
 
-      const newMapping = new Map();
-      for (const [target, { fill, stroke }] of parsed.elems) {
+      const newMapping = new Map<string, number[]>();
+      const update = new Map<string, string>();
+      for (const target of parsed.colors) {
         const { opacities, color } = colorSeparation(target, pool, {
           quadratic,
           paper: paperColor,
           increments,
         });
-
-        for (const elem of fill) {
-          elem.style.fill = color;
-        }
-        for (const elem of stroke) {
-          elem.style.stroke = color;
-        }
         newMapping.set(target, opacities);
+        update.set(target, color);
       }
 
-      // TODO there's a bug where sometimes specific colors are off. These
-      // aren't off on export, so it must have to do with the rendering...
+      const render = parsed.doc.cloneNode(true) as Document;
+      updateColors(render, update);
       const serial = new XMLSerializer();
-      const rendered = serial.serializeToString(parsed.doc);
+      const rendered = serial.serializeToString(render);
       setAltered([
         `data:image/svg+xml,${encodeURIComponent(rendered)}`,
         newMapping,
       ]);
-    } else {
-      for (const [color, { fill, stroke }] of parsed?.elems ?? []) {
-        for (const elem of fill) {
-          elem.style.fill = color;
-        }
-        for (const elem of stroke) {
-          elem.style.stroke = color;
-        }
-      }
-      setAltered([undefined, new Map()]);
     }
   }, [colors, quadratic, increments, parsed, setAltered, paperColor]);
 
@@ -508,18 +492,16 @@ export default function App(): ReactElement {
       let i = 0;
       for (const [color, [name, active]] of colors) {
         if (active) {
-          for (const [color, { fill, stroke }] of parsed.elems) {
+          const update = new Map<string, string>();
+          for (const color of parsed.colors) {
             const opacity = mapping.get(color)![i];
             const hex = Math.round(255 * (1 - opacity)).toString(16);
             const grey = `#${hex}${hex}${hex}`;
-            for (const elem of fill) {
-              elem.style.fill = grey;
-            }
-            for (const elem of stroke) {
-              elem.style.stroke = grey;
-            }
+            update.set(color, grey);
           }
-          const rendered = serial.serializeToString(parsed.doc);
+          const render = parsed.doc.cloneNode(true) as Document;
+          updateColors(render, update);
+          const rendered = serial.serializeToString(render);
           const blob = new Blob([rendered], { type: "image/svg+xml" });
           saveAs(blob, `${baseName}_${name.replace(" ", "_")}.svg`);
           i++;
@@ -533,85 +515,25 @@ export default function App(): ReactElement {
       setFileName(file.name);
       setParsed(null);
       setShowHelp(false);
-      let error;
-      let div;
       try {
         const text = await file.text();
         const parser = new DOMParser();
         const svg = parser.parseFromString(text, "image/svg+xml");
-
-        // shenanigans to use get computed style
-        div = document.createElement("div");
-        div.style.display = "none";
-        const shadow = div.attachShadow({ mode: "open" });
-        for (const elem of svg.children) {
-          shadow.appendChild(elem);
-        }
-        document.documentElement.appendChild(div);
-
-        const colorMap = new Map<string, Elements>();
-        for (const elem of shadow.querySelectorAll("*")) {
-          if (elem instanceof SVGElement) {
-            const { fill, stroke } = getComputedStyle(elem);
-            if (fill && fill !== "none") {
-              try {
-                const color = parseCSS(fill);
-                const list = mapGetDef(colorMap, color, () => ({
-                  fill: [],
-                  stroke: [],
-                })).fill;
-                list.push(elem);
-              } catch (ex) {
-                console.error("problem parsing color", ex);
-                error = "Problem parsing colors in SVG";
-                elem.style.fill = "none";
-              }
-            }
-            if (stroke && stroke !== "none") {
-              try {
-                const color = parseCSS(stroke);
-                const list = mapGetDef(colorMap, color, () => ({
-                  fill: [],
-                  stroke: [],
-                })).stroke;
-                list.push(elem);
-              } catch (ex) {
-                console.error("problem parsing color", ex);
-                error = "Problem parsing colors in SVG";
-                elem.style.stroke = "none";
-              }
-            }
-          }
-        }
-
-        // restore svg document
-        for (const elem of shadow.children) {
-          svg.appendChild(elem);
-        }
+        const colors = [...extractColors(svg)];
 
         setParsed({
           raw: `data:image/svg+xml,${encodeURIComponent(text)}`,
           doc: svg,
-          elems: colorMap,
+          colors,
         });
       } catch (ex) {
         console.error(ex);
-        error = "Problem loading SVG";
-        setParsed(undefined);
-      } finally {
-        // remove temp div from document
-        try {
-          div && document.documentElement.removeChild(div);
-        } catch {
-          // noop
-        }
-      }
-      if (error) {
         toast({
-          title: error,
+          title: "Problem loading SVG",
           status: "error",
           position: "bottom-left",
         });
+        setParsed(undefined);
       }
     },
     [setParsed, setFileName, setShowHelp, toast]
