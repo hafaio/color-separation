@@ -651,7 +651,12 @@ export default function App(): ReactElement {
           </a>
         </div>
       </div>
-      <div className="h-full w-full overflow-auto">{img}</div>
+      <div
+        className="h-full w-full overflow-auto"
+        style={{ backgroundColor: paperColor }}
+      >
+        {img}
+      </div>
     </div>
   );
 }
