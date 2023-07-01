@@ -10,7 +10,7 @@ const theme = extendTheme(
   {
     config: { initialColorMode: "system", useSystemColorMode: true },
   },
-  withDefaultColorScheme({ colorScheme: "gray" })
+  withDefaultColorScheme({ colorScheme: "gray" }),
 );
 
 export default function MyApp({ Component, pageProps }: AppProps) {

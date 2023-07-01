@@ -21,12 +21,12 @@ type CMYColor = [number, number, number];
 
 function parseCMYColor(color: string): CMYColor {
   return [...Array(3)].map(
-    (_, i) => 1 - parseInt(color.slice(i * 2 + 1, i * 2 + 3), 16) / 255
+    (_, i) => 1 - parseInt(color.slice(i * 2 + 1, i * 2 + 3), 16) / 255,
   ) as CMYColor;
 }
 
 function formatCMYColor(color: CMYColor): string {
-  return formatColor(color.map((c) => 1 - c));
+  return formatColor(color.map((c) => 1 - c) as [number, number, number]);
 }
 
 interface Result {
@@ -37,12 +37,12 @@ interface Result {
 function colorSeparationLinear(
   target: CMYColor,
   pool: readonly CMYColor[],
-  increments: number
+  increments: number,
 ): Result {
   const mult = Math.max(increments, 1);
   const weighting = 1e-4;
   const weights = pool.map(
-    (color) => weighting * color.reduce((s, v) => s + (1 - v) / 3, 0)
+    (color) => weighting * color.reduce((s, v) => s + (1 - v) / 3, 0),
   );
 
   const constraints: Record<string, Constraint> = {};
@@ -85,7 +85,7 @@ function colorSeparationLinear(
       constraints,
       variables,
       ints,
-    }
+    },
   );
   /* istanbul ignore else */
   if (feasible && bounded) {
@@ -111,14 +111,14 @@ function dot(left: readonly number[], right: readonly number[]): number {
 function colorSeparationQuadratic(
   target: CMYColor,
   pool: readonly CMYColor[],
-  increments: number
+  increments: number,
 ): Result {
   // NOTE since colors can be linearly dependent (and will necessarily be if
   // there's more than three, we help make the matrix positive definite by
   // penalizing the weights a small amount for the magnitude of the color
   const weighting = 1e-4;
   const weights = pool.map(
-    (color) => weighting * color.reduce((s, v) => s + (1 - v) / 3, 0)
+    (color) => weighting * color.reduce((s, v) => s + (1 - v) / 3, 0),
   );
 
   const Dmat = [
@@ -128,7 +128,7 @@ function colorSeparationQuadratic(
         [
           ,
           ...pool.map((cj, j) => dot(ci, cj) + (i === j ? weights[i] : 0)),
-        ] as const
+        ] as const,
     ),
   ] as const;
   const dvec = [, ...pool.map((ci) => dot(ci, target))] as const;
@@ -140,7 +140,7 @@ function colorSeparationQuadratic(
           ,
           ...pool.map((_, j) => (i === j ? 1 : 0)),
           ...pool.map((_, j) => (i === j ? -1 : 0)),
-        ] as const
+        ] as const,
     ),
   ] as const;
   const bvec = [, ...pool.map(() => 0), ...pool.map(() => -1)] as const;
@@ -206,13 +206,13 @@ export function colorSeparation(
     paper?: string;
     increments?: number;
     factorPaper?: boolean;
-  } = {}
+  } = {},
 ): ColoredResult {
   let cmyTarget = parseCMYColor(target);
   const cmyPaper = parseCMYColor(paper);
   if (factorPaper) {
     cmyTarget = cmyTarget.map((c, i) =>
-      Math.max(c - cmyPaper[i], 0)
+      Math.max(c - cmyPaper[i], 0),
     ) as CMYColor;
   }
   const cmyPool = pool.map(parseCMYColor);

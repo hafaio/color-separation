@@ -74,6 +74,6 @@ declare module "quadprog" {
     Amat: readonly [unknown, ...(readonly [unknown, ...number[]])[]],
     bvec: readonly [unknown, ...number[]],
     meq?: number,
-    factorized?: readonly [unknown, number]
+    factorized?: readonly [unknown, number],
   ): Result;
 }

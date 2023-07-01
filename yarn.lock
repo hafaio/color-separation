@@ -3586,6 +3586,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/d3-color@npm:^3.1.0":
+  version: 3.1.0
+  resolution: "@types/d3-color@npm:3.1.0"
+  checksum: b1856f17d6366559a68eaba0164f30727e9dc5eaf1b3a6c8844354da228860240423d19fa4de65bff9da26b4ead8843eab14b1566962665412e8fd82c3810554
+  languageName: node
+  linkType: hard
+
 "@types/emscripten@npm:^1.39.6":
   version: 1.39.6
   resolution: "@types/emscripten@npm:1.39.6"
@@ -4753,12 +4760,14 @@ __metadata:
     "@chakra-ui/system": ^2.5.1
     "@emotion/react": ^11.10.6
     "@emotion/styled": ^11.10.6
+    "@types/d3-color": ^3.1.0
     "@types/file-saver": ^2.0.5
     "@types/jest": ^29.4.0
     "@types/node": ^18.14.6
     "@types/react": ^18.0.28
     "@yarnpkg/pnpify": ^4.0.0-rc.40
     autoprefixer: ^10.4.13
+    d3-color: ^3.1.0
     eslint: 8.35.0
     eslint-config-next: 13.2.3
     file-saver: ^2.0.5
@@ -4901,6 +4910,13 @@ __metadata:
   version: 3.1.1
   resolution: "csstype@npm:3.1.1"
   checksum: 1f7b4f5fdd955b7444b18ebdddf3f5c699159f13e9cf8ac9027ae4a60ae226aef9bbb14a6e12ca7dba3358b007cee6354b116e720262867c398de6c955ea451d
+  languageName: node
+  linkType: hard
+
+"d3-color@npm:^3.1.0":
+  version: 3.1.0
+  resolution: "d3-color@npm:3.1.0"
+  checksum: 4931fbfda5d7c4b5cfa283a13c91a954f86e3b69d75ce588d06cde6c3628cebfc3af2069ccf225e982e8987c612aa7948b3932163ce15eb3c11cd7c003f3ee3b
   languageName: node
   linkType: hard
 

@@ -151,21 +151,21 @@ function PalletteInput({
   const [name, setName] = useState("");
   const inputChange = useCallback(
     (evt: ChangeEvent<HTMLInputElement>) => setName(evt.target.value),
-    [setName]
+    [setName],
   );
   const [color, setColor] = useState("#000000");
   const colorChange = useCallback(
     (evt: ChangeEvent<HTMLInputElement>) => setColor(evt.target.value),
-    [setColor]
+    [setColor],
   );
   const paperColorChange = useCallback(
     (evt: ChangeEvent<HTMLInputElement>) => setPaperColor(evt.target.value),
-    [setPaperColor]
+    [setPaperColor],
   );
 
   const addClick = useCallback(
     () => addColor(color, name),
-    [color, name, addColor]
+    [color, name, addColor],
   );
 
   const valid = name && !colors.has(color);
@@ -273,17 +273,17 @@ function Editor({
   const onUp = useCallback(() => setShowRaw(false), [setShowRaw]);
   const toggleColor = useCallback(
     (color: string) => modifyColors({ action: "toggle", color }),
-    [modifyColors]
+    [modifyColors],
   );
   const setPallette = useCallback(
     (colors: readonly (readonly [string, string])[]) =>
       modifyColors({ action: "set", colors }),
-    [modifyColors]
+    [modifyColors],
   );
   const addColor = useCallback(
     (color: string, name: string) =>
       modifyColors({ action: "add", color, name }),
-    [modifyColors]
+    [modifyColors],
   );
   const selected = [...colors.values()].some(([, active]) => active);
   return (
@@ -399,7 +399,7 @@ function DropModal({ show }: { show: boolean }): ReactElement {
       <div
         className={`w-96 p-4 space-y-2 rounded-md shadow-md ${useColorModeValue(
           "bg-white",
-          "bg-gray-900"
+          "bg-gray-900",
         )}`}
       >
         <h1 className="font-bold text-lg">Drag & Drop an SVG to Upload</h1>
@@ -430,7 +430,7 @@ export default function App(): ReactElement {
   const [showHelp, setShowHelp] = useState(false);
   const toggleHelp = useCallback(
     () => setShowHelp(!showHelp),
-    [showHelp, setShowHelp]
+    [showHelp, setShowHelp],
   );
   const toast = useToast();
 
@@ -439,11 +439,11 @@ export default function App(): ReactElement {
   const [colors, modifyColors] = useReducer(
     (
       existingColors: Map<string, [string, boolean]>,
-      action: Action
+      action: Action,
     ): Map<string, [string, boolean]> => {
       if (action.action === "set") {
         return new Map(
-          action.colors.map(([color, name]) => [color, [name, false]])
+          action.colors.map(([color, name]) => [color, [name, false]]),
         );
       } else if (action.action === "add") {
         const copy = new Map(existingColors);
@@ -457,7 +457,7 @@ export default function App(): ReactElement {
         return copy;
       }
     },
-    new Map<string, [string, boolean]>()
+    new Map<string, [string, boolean]>(),
   );
   const [paperColor, setPaperColor] = useState("#ffffff");
 
@@ -554,7 +554,7 @@ export default function App(): ReactElement {
         setParsed(undefined);
       }
     },
-    [setParsed, setFileName, setShowHelp, toast]
+    [setParsed, setFileName, setShowHelp, toast],
   );
 
   const editor =
@@ -600,7 +600,7 @@ export default function App(): ReactElement {
         });
       }
     },
-    [onUpload, toast]
+    [onUpload, toast],
   );
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
