@@ -5,9 +5,9 @@
   "main": "index.js",
   "author": "Erik Brinkman <erik.brinkman@gmail.com>",
   "license": "MIT",
-  "packageManager": "yarn@3.2.4",
+  "packageManager": "yarn@3.6.1",
   "scripts": {
-    "fmt": "prettier --write --cache 'pages/**/*.tsx' 'utils/*.ts' next.config.mjs tailwind.config.js postcss.config.js package.json",
+    "fmt": "pnpify prettier --write --cache 'pages/**/*.tsx' 'utils/*.ts' next.config.mjs tailwind.config.js postcss.config.js package.json",
     "lint:tsc": "pnpify tsc",
     "lint": "yarn lint:tsc && next lint && eslint 'pages/**/*.tsx' 'utils/*.ts'",
     "test": "jest --coverage",
@@ -15,44 +15,46 @@
     "build": "pnpify next build && next export -o docs && touch docs/.nojekyll"
   },
   "devDependencies": {
-    "@babel/core": "^7.21.0",
-    "@babel/preset-env": "^7.20.2",
-    "@babel/preset-typescript": "^7.21.0",
+    "@babel/core": "^7.22.9",
+    "@babel/preset-env": "^7.22.9",
+    "@babel/preset-typescript": "^7.22.5",
     "@types/d3-color": "^3.1.0",
     "@types/file-saver": "^2.0.5",
-    "@types/jest": "^29.4.0",
-    "@types/node": "^18.14.6",
-    "@types/react": "^18.0.28",
-    "eslint": "8.35.0",
-    "eslint-config-next": "13.2.3",
-    "jest": "^29.4.3",
-    "prettier": "^2.8.4",
-    "prettier-plugin-organize-imports": "^3.2.2",
-    "typescript": "^4.9.5"
+    "@types/jest": "^29.5.3",
+    "@types/node": "^20.4.5",
+    "@types/react": "^18.2.17",
+    "eslint": "8.46.0",
+    "eslint-config-next": "13.4.12",
+    "jest": "^29.6.2",
+    "prettier": "^3.0.0",
+    "prettier-plugin-organize-imports": "^3.2.3",
+    "typescript": "^5.1.6"
   },
   "dependencies": {
-    "@chakra-ui/icons": "^2.0.17",
-    "@chakra-ui/react": "^2.5.1",
-    "@chakra-ui/system": "^2.5.1",
-    "@emotion/react": "^11.10.6",
-    "@emotion/styled": "^11.10.6",
-    "@yarnpkg/pnpify": "^4.0.0-rc.40",
-    "autoprefixer": "^10.4.13",
+    "@chakra-ui/icons": "^2.1.0",
+    "@chakra-ui/react": "^2.8.0",
+    "@chakra-ui/system": "^2.6.0",
+    "@emotion/react": "^11.11.1",
+    "@emotion/styled": "^11.11.0",
+    "@yarnpkg/pnpify": "^4.0.0-rc.48",
+    "autoprefixer": "^10.4.14",
     "d3-color": "^3.1.0",
     "file-saver": "^2.0.5",
-    "framer-motion": "^10.0.2",
+    "framer-motion": "^10.15.0",
     "javascript-lp-solver": "^0.4.24",
-    "next": "^13.2.3",
-    "postcss": "^8.4.21",
+    "next": "^13.4.12",
+    "postcss": "^8.4.27",
     "quadprog": "^1.6.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-dropzone": "^14.2.3",
-    "react-icons": "^4.8.0",
-    "tailwindcss": "^3.2.7"
+    "react-icons": "^4.10.1",
+    "tailwindcss": "^3.3.3"
   },
-  "resolutions": {
-    "json5": "^2.2.2"
+  "jest": {
+    "transformIgnorePatterns": [
+      "node_modules/(?!(d3-color)/)"
+    ]
   },
   "prettier": {
     "plugins": [
