@@ -14,3 +14,4 @@
 node_modules
 tsconfig.tsbuildinfo
 coverage
+cache

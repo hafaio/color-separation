@@ -1,9 +1,11 @@
+"use client";
+
 import {
   ChakraProvider,
   extendTheme,
   withDefaultColorScheme,
 } from "@chakra-ui/react";
-import type { AppProps } from "next/app";
+import { ReactElement, ReactNode } from "react";
 import "../styles/global.css";
 
 const theme = extendTheme(
@@ -13,10 +15,10 @@ const theme = extendTheme(
   withDefaultColorScheme({ colorScheme: "gray" }),
 );
 
-export default function MyApp({ Component, pageProps }: AppProps) {
-  return (
-    <ChakraProvider theme={theme}>
-      <Component {...pageProps} />
-    </ChakraProvider>
-  );
+export default function Theme({
+  children,
+}: {
+  children: ReactNode;
+}): ReactElement {
+  return <ChakraProvider theme={theme}>{children}</ChakraProvider>;
 }

@@ -7,12 +7,12 @@
   "license": "MIT",
   "packageManager": "yarn@3.6.1",
   "scripts": {
-    "fmt": "pnpify prettier --write --cache 'pages/**/*.tsx' 'utils/*.ts' next.config.mjs tailwind.config.js postcss.config.js package.json",
+    "fmt": "pnpify prettier --write --cache 'app/**/*.tsx' 'components/*.tsx' 'utils/*.ts' next.config.mjs tailwind.config.js postcss.config.js package.json",
     "lint:tsc": "pnpify tsc",
-    "lint": "yarn lint:tsc && next lint && eslint 'pages/**/*.tsx' 'utils/*.ts'",
+    "lint": "yarn lint:tsc && next lint && eslint 'app/**/*.tsx' 'components/*.tsx' 'utils/*.ts'",
     "test": "jest --coverage",
     "dev": "next dev",
-    "build": "pnpify next build && next export -o docs && touch docs/.nojekyll"
+    "build": "pnpify next build && touch docs/.nojekyll"
   },
   "devDependencies": {
     "@babel/core": "^7.22.9",

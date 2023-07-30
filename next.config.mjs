@@ -8,3 +8,6 @@ export const webpack = (config) => {
 export const reactStrictMode = true;
 export const assetPrefix =
   process.env.NODE_ENV === "production" ? "/color-separation" : undefined;
+export const output = "export";
+export const distDir =
+  process.env.NODE_ENV === "production" ? "docs" : undefined;
