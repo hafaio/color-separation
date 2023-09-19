@@ -19,6 +19,17 @@ import UploadButton from "../components/upload-button";
 import { extractColors, updateColors } from "../utils/extract";
 import { colorSeparation } from "../utils/sep";
 
+// FIXME change the color parsing. Right now we translate opacity to white, but
+// I think we should just preserve opacity. This should work, but we'll need to
+// make sure for download we convery the color to grayscale, not to black with
+// opacity.
+// FIXME colors I think it all colors present, but we shouldn't need that,
+// instead, update should just compute the colors lazily as it finds them,
+// saving the storage here.
+// FIXME update should now only compute the expected new color, and download
+// should compute the component
+// FIXME add a png version of parsed where raw is the raw image url and doc is
+// some javascritp image representation
 interface Parsed {
   readonly raw: string;
   readonly doc: Document;
@@ -113,6 +124,7 @@ export default function App(): ReactElement {
           const update = new Map<string, string>();
           for (const color of parsed.colors) {
             const opacity = mapping.get(color)![i];
+            // FIXME switch to d3-color format
             const hex = Math.round(255 * (1 - opacity)).toString(16);
             const grey = `#${hex}${hex}${hex}`;
             update.set(color, grey);
