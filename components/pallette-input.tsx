@@ -2,7 +2,6 @@ import {
   Button,
   Input,
   InputGroup,
-  InputLeftAddon,
   InputRightAddon,
   Select,
   Tooltip,
@@ -32,18 +31,16 @@ const cmykPallette = [
   ["#000000", "black"],
 ] as const;
 
+// FIXME think about this interface more, maybe just have a + icon for adding a
+// color and a clear? And maybe just have presets as well?
 export default function PalletteInput({
   colors,
   setPallette,
   addColor,
-  paperColor,
-  setPaperColor,
 }: {
   colors: Map<string, unknown>;
   setPallette: (colors: readonly (readonly [string, string])[]) => void;
   addColor: (color: string, name: string) => void;
-  paperColor: string;
-  setPaperColor: (color: string) => void;
 }): ReactElement {
   const palletteChange = (evt: ChangeEvent<HTMLSelectElement>) => {
     const val = evt.target.value;
@@ -67,10 +64,6 @@ export default function PalletteInput({
   const colorChange = useCallback(
     (evt: ChangeEvent<HTMLInputElement>) => setColor(evt.target.value),
     [setColor],
-  );
-  const paperColorChange = useCallback(
-    (evt: ChangeEvent<HTMLInputElement>) => setPaperColor(evt.target.value),
-    [setPaperColor],
   );
 
   const addClick = useCallback(
@@ -112,12 +105,6 @@ export default function PalletteInput({
         <option value="riso">Risograph</option>
         <option value="cmyk">CMYK</option>
       </Select>
-      <InputGroup>
-        <InputLeftAddon>
-          <Tooltip label="Set the printed paper color">Paper Color</Tooltip>
-        </InputLeftAddon>
-        <Input type="color" value={paperColor} onChange={paperColorChange} />
-      </InputGroup>
     </>
   );
 }

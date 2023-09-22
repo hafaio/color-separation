@@ -19,6 +19,9 @@ import UploadButton from "../components/upload-button";
 import { extractColors, updateColors } from "../utils/extract";
 import { colorSeparation } from "../utils/sep";
 
+// FIXME remove quadratic loss, not as good
+// FIXME make sure that opacities are capped at 1, because they don't seem to
+// be for lighter colors, so off whites render as really dark
 // FIXME change the color parsing. Right now we translate opacity to white, but
 // I think we should just preserve opacity. This should work, but we'll need to
 // make sure for download we convery the color to grayscale, not to black with
@@ -70,13 +73,11 @@ export default function App(): ReactElement {
     },
     new Map<string, [string, boolean]>(),
   );
-  const [paperColor, setPaperColor] = useState("#ffffff");
 
   const [[altered, mapping], setAltered] = useState<
     [string | undefined, Map<string, number[]>]
   >([undefined, new Map<string, number[]>()]);
   const [quadratic, toggleQuad] = useReducer((state: boolean) => !state, false);
-  const [usePaper, togglePaper] = useReducer((state: boolean) => !state, true);
   const [increments, setIncrements] = useState(0);
 
   useEffect(() => {
@@ -95,9 +96,7 @@ export default function App(): ReactElement {
       for (const target of parsed.colors) {
         const { opacities, color } = colorSeparation(target, pool, {
           quadratic,
-          paper: paperColor,
           increments,
-          factorPaper: usePaper,
         });
         newMapping.set(target, opacities);
         update.set(target, color);
@@ -112,7 +111,7 @@ export default function App(): ReactElement {
         newMapping,
       ]);
     }
-  }, [colors, quadratic, increments, parsed, setAltered, paperColor, usePaper]);
+  }, [colors, quadratic, increments, parsed, setAltered]);
 
   const download = useCallback(() => {
     if (parsed && mapping.size && fileName) {
@@ -174,12 +173,8 @@ export default function App(): ReactElement {
       <Editor
         colors={colors}
         modifyColors={modifyColors}
-        paperColor={paperColor}
-        setPaperColor={setPaperColor}
         quadratic={quadratic}
         toggleQuad={toggleQuad}
-        usePaper={usePaper}
-        togglePaper={togglePaper}
         increments={increments}
         setIncrements={setIncrements}
         download={download}
@@ -242,12 +237,7 @@ export default function App(): ReactElement {
           </div>
           <Footer helpDisabled={!parsed} toggleHelp={toggleHelp} />
         </div>
-        <div
-          className="h-full w-full overflow-auto"
-          style={{ backgroundColor: paperColor }}
-        >
-          {img}
-        </div>
+        <div className="h-full w-full overflow-auto">{img}</div>
       </div>
     </Theme>
   );

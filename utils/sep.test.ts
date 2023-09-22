@@ -127,25 +127,4 @@ test("color saturation", () => {
   expect(Math.abs(blue - 0.55)).toBeLessThan(0.01);
   expect(Math.abs(green - 0.55)).toBeLessThan(0.01);
   expect(color).toBe("#00bebe");
-
-  // ignoring white paper doesn't matter
-  const res = colorSeparation("#008888", colors, { factorPaper: false });
-  expect(res.color).toBe("#00bebe");
-});
-
-test("paper color", () => {
-  const target = "#dd8822";
-  const colors = ["#22ccee", "#bbee33"];
-  const base = colorSeparation(target, colors);
-  expect(base.color).toBe("#bbee33");
-
-  const paper = colorSeparation(target, colors, { paper: "#eeeeee" });
-  expect(paper.color).toBe("#adde2b");
-
-  const noPaper = colorSeparation(target, colors, {
-    paper: "#eeeeee",
-    factorPaper: false,
-  });
-  // "one" less than base, e.g. base + paper = this
-  expect(noPaper.color).toBe("#aadd22");
 });

@@ -24,12 +24,8 @@ function EditorHeader({ children }: PropsWithChildren): ReactElement {
 export default function Editor({
   colors,
   modifyColors,
-  paperColor,
-  setPaperColor,
   quadratic,
   toggleQuad,
-  usePaper,
-  togglePaper,
   increments,
   setIncrements,
   download,
@@ -38,12 +34,8 @@ export default function Editor({
 }: {
   colors: Map<string, [string, boolean]>;
   modifyColors: (action: Action) => void;
-  paperColor: string;
-  setPaperColor: (color: string) => void;
   quadratic: boolean;
   toggleQuad: () => void;
-  usePaper: boolean;
-  togglePaper: () => void;
   increments: number;
   setIncrements: (inc: number) => void;
   download: () => void;
@@ -99,8 +91,6 @@ export default function Editor({
         setPallette={setPallette}
         colors={colors}
         addColor={addColor}
-        paperColor={paperColor}
-        setPaperColor={setPaperColor}
       />
       <EditorHeader>Dicretizations</EditorHeader>
       <p>Drag the slider to change the number of dicrete opacities</p>
@@ -124,18 +114,6 @@ export default function Editor({
             <EditorHeader>Quadratic Loss</EditorHeader>
           </label>
           <Switch id="quadratic" onChange={toggleQuad} isChecked={quadratic} />
-        </div>
-      </Tooltip>
-      <Tooltip label="Account for paper color when doing separation">
-        <div className="flex flex-row justify-between items-baseline">
-          <label htmlFor="account-paper-color">
-            <EditorHeader>Account for Paper Color</EditorHeader>
-          </label>
-          <Switch
-            id="account-paper-color"
-            onChange={togglePaper}
-            isChecked={usePaper}
-          />
         </div>
       </Tooltip>
     </>

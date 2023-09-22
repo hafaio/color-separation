@@ -189,7 +189,6 @@ interface ColoredResult extends Result {
  * @param target - the target color
  * @param pool - an array of the available colors
  * @param quadratic - true if using quadratic optimization
- * @param paper - the paper color, white being the most general
  * @param increments - the number of color increments to use; opacities will
  *   always be multiples of 1 / increments; if 0 then use continuous increments
  */
@@ -198,28 +197,18 @@ export function colorSeparation(
   pool: readonly string[],
   {
     quadratic = true,
-    paper = "#ffffff",
     increments = 0,
-    factorPaper = true,
   }: {
     quadratic?: boolean;
-    paper?: string;
     increments?: number;
-    factorPaper?: boolean;
   } = {},
 ): ColoredResult {
   let cmyTarget = parseCMYColor(target);
-  const cmyPaper = parseCMYColor(paper);
-  if (factorPaper) {
-    cmyTarget = cmyTarget.map((c, i) =>
-      Math.max(c - cmyPaper[i], 0),
-    ) as CMYColor;
-  }
   const cmyPool = pool.map(parseCMYColor);
   const { error, opacities } = quadratic
     ? colorSeparationQuadratic(cmyTarget, cmyPool, increments)
     : colorSeparationLinear(cmyTarget, cmyPool, increments);
-  const closest: CMYColor = [...cmyPaper];
+  const closest: CMYColor = [0, 0, 0];
   for (const [i, color] of cmyPool.entries()) {
     const opacity = opacities[i];
     for (const [j, c] of color.entries()) {
