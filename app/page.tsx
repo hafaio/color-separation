@@ -2,6 +2,7 @@
 
 import { useToast } from "@chakra-ui/react";
 import * as d3color from "d3-color";
+import { ColorSpaceObject } from "d3-color";
 import { saveAs } from "file-saver";
 import {
   ReactElement,
@@ -17,17 +18,35 @@ import Footer from "../components/footer";
 import HelpText from "../components/help-text";
 import Theme from "../components/theme";
 import UploadButton from "../components/upload-button";
-import { extractColors, updateColors } from "../utils/extract";
+import { blob2imgdata, blob2url, imgdata2blob } from "../utils/conversion";
+import {
+  extractBmpColors,
+  extractSvgColors,
+  updateBmpColors,
+  updateSvgColors,
+} from "../utils/extract";
 import { colorSeparation } from "../utils/sep";
+import { copyImageData } from "../utils/utils";
 
-// FIXME add a png version of parsed where raw is the raw image url and doc is
-// some javascript image representation
+const parser = new DOMParser();
+const serial = new XMLSerializer();
+
 // FIXME also handle svgs with embedded rasters
-interface Parsed {
-  readonly raw: string;
-  readonly doc: Document;
-  readonly colors: readonly string[];
+interface ParsedVector {
+  format: "image/svg+xml";
+  raw: string;
+  doc: Document;
+  colors: readonly string[];
 }
+
+interface ParsedRaster {
+  format: "image/png" | "image/jpeg";
+  raw: string;
+  img: ImageData;
+  colors: readonly string[];
+}
+
+type Parsed = Readonly<ParsedVector> | Readonly<ParsedRaster>;
 
 function* activeColors(
   existingColors: Map<string, [string, boolean]>,
@@ -98,25 +117,43 @@ export default function App(): ReactElement {
         update.set(target, color);
       }
 
-      const render = parsed.doc.cloneNode(true) as Document;
-      updateColors(render, (css: string) => {
-        const orig = d3color.color(css)!;
+      const updater = (orig: ColorSpaceObject): ColorSpaceObject => {
         const updated = d3color.color(update.get(orig.formatHex())!)!;
-        return updated.copy({ opacity: orig.opacity }).toString();
-      });
-      const serial = new XMLSerializer();
-      const rendered = serial.serializeToString(render);
-      setAltered([
-        `data:image/svg+xml,${encodeURIComponent(rendered)}`,
-        weights,
-      ]);
+        return updated.copy({ opacity: orig.opacity });
+      };
+
+      // FIXME might want to move this into a webworker
+      (async () => {
+        let url;
+        switch (parsed.format) {
+          case "image/png":
+          case "image/jpeg":
+            {
+              const render = copyImageData(parsed.img);
+              updateBmpColors(render, updater);
+              const blob = await imgdata2blob(render);
+              url = await blob2url(blob);
+            }
+            break;
+          case "image/svg+xml":
+            {
+              const render = parsed.doc.cloneNode(true) as Document;
+              updateSvgColors(render, updater);
+              const rendered = serial.serializeToString(render);
+              url = `data:image/svg+xml,${encodeURIComponent(rendered)}`;
+            }
+            break;
+          default:
+            parsed satisfies never;
+        }
+        setAltered([url, weights]);
+      })();
     }
   }, [colors, increments, parsed, setAltered]);
 
   const download = useCallback(() => {
     if (parsed && mapping.size && fileName) {
       const baseName = fileName.slice(0, fileName.lastIndexOf(".")) || fileName;
-      const serial = new XMLSerializer();
 
       const pool = [];
       for (const [, name] of activeColors(colors)) {
@@ -124,16 +161,33 @@ export default function App(): ReactElement {
       }
 
       for (const [ind, name] of pool.entries()) {
-        const render = parsed.doc.cloneNode(true) as Document;
-        updateColors(render, (css: string) => {
-          const orig = d3color.color(css)!;
+        const updater = (orig: ColorSpaceObject): ColorSpaceObject => {
           const opacity = mapping.get(orig.formatHex())![ind];
           const updated = d3color.gray((1 - opacity) * 100);
-          return updated.copy({ opacity: orig.opacity }).toString();
-        });
-        const rendered = serial.serializeToString(render);
-        const blob = new Blob([rendered], { type: "image/svg+xml" });
-        saveAs(blob, `${baseName}_${name.replace(" ", "_")}.svg`);
+          return updated.copy({ opacity: orig.opacity });
+        };
+
+        // FIXME might want to move this into a webworker
+        (async () => {
+          let blob, ext;
+          switch (parsed.format) {
+            case "image/png":
+            case "image/jpeg":
+              const bmp = copyImageData(parsed.img);
+              updateBmpColors(bmp, updater);
+              blob = await imgdata2blob(bmp);
+              ext = "png";
+              break;
+            case "image/svg+xml":
+              const svg = parsed.doc.cloneNode(true) as Document;
+              updateSvgColors(svg, updater);
+              const rendered = serial.serializeToString(svg);
+              blob = new Blob([rendered], { type: "image/svg+xml" });
+              ext = "svg";
+              break;
+          }
+          saveAs(blob, `${baseName}_${name.replace(" ", "_")}.${ext}`);
+        })();
       }
     }
   }, [parsed, mapping, colors, fileName]);
@@ -143,25 +197,60 @@ export default function App(): ReactElement {
       setFileName(file.name);
       setParsed(null);
       setShowHelp(false);
-      try {
-        const text = await file.text();
-        const parser = new DOMParser();
-        const svg = parser.parseFromString(text, "image/svg+xml");
-        const colors = [...extractColors(svg)];
+      switch (file.type) {
+        case "image/jpeg":
+        case "image/png":
+          try {
+            const [img, raw] = await Promise.all([
+              blob2imgdata(file),
+              blob2url(file),
+            ]);
+            const colors = [...extractBmpColors(img)];
 
-        setParsed({
-          raw: `data:image/svg+xml,${encodeURIComponent(text)}`,
-          doc: svg,
-          colors,
-        });
-      } catch (ex) {
-        console.error(ex);
-        toast({
-          title: "Problem loading SVG",
-          status: "error",
-          position: "bottom-left",
-        });
-        setParsed(undefined);
+            setParsed({
+              format: file.type,
+              raw,
+              img,
+              colors,
+            });
+          } catch (ex) {
+            toast({
+              title: "Problem loading image",
+              status: "error",
+              position: "bottom-left",
+            });
+            setParsed(undefined);
+          }
+          break;
+        case "image/svg+xml":
+          try {
+            const text = await file.text();
+            const svg = parser.parseFromString(text, file.type);
+            const colors = [...extractSvgColors(svg)];
+
+            setParsed({
+              format: file.type,
+              raw: `data:image/svg+xml,${encodeURIComponent(text)}`,
+              doc: svg,
+              colors,
+            });
+          } catch (ex) {
+            console.error(ex);
+            toast({
+              title: "Problem loading SVG",
+              status: "error",
+              position: "bottom-left",
+            });
+            setParsed(undefined);
+          }
+          break;
+        default:
+          toast({
+            title: `unknown file type: ${file.type}`,
+            status: "error",
+            position: "bottom-left",
+          });
+          setParsed(undefined);
       }
     },
     [setParsed, setFileName, setShowHelp, toast],
@@ -210,6 +299,8 @@ export default function App(): ReactElement {
     onDrop,
     accept: {
       "image/svg+xml": [],
+      "image/png": [],
+      "image/jpeg": [],
     },
     multiple: false,
     noClick: true,

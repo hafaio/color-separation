@@ -1,8 +1,33 @@
 import * as d3color from "d3-color";
+import { ColorSpaceObject } from "d3-color";
+
+export function extractBmpColors(img: ImageData): Set<string> {
+  const colors = new Set<string>();
+  const size = img.width * img.height * 4;
+  for (let i = 0; i < size; i += 4) {
+    const color = d3color.rgb(img.data[i], img.data[i + 1], img.data[i + 2]);
+    colors.add(color.formatHex());
+  }
+  return colors;
+}
+
+export function updateBmpColors(
+  img: ImageData,
+  update: (css: ColorSpaceObject) => ColorSpaceObject,
+) {
+  const size = img.width * img.height * 4;
+  for (let i = 0; i < size; i += 4) {
+    const color = d3color.rgb(img.data[i], img.data[i + 1], img.data[i + 2]);
+    const { r, g, b } = update(color).rgb();
+    img.data[i] = r;
+    img.data[i + 1] = g;
+    img.data[i + 2] = b;
+  }
+}
 
 const COLOR_PROPS = ["fill", "stroke", "stopColor"] as const;
 
-export function extractColors(doc: Document): Set<string> {
+export function extractSvgColors(doc: Document): Set<string> {
   const colors = new Set<string>();
   for (const elem of doc.querySelectorAll("*")) {
     if (elem instanceof SVGStyleElement) {
@@ -30,7 +55,10 @@ export function extractColors(doc: Document): Set<string> {
   return colors;
 }
 
-export function updateColors(doc: Document, update: (css: string) => string) {
+export function updateSvgColors(
+  doc: Document,
+  update: (css: ColorSpaceObject) => ColorSpaceObject,
+) {
   for (const elem of doc.querySelectorAll("*")) {
     if (elem instanceof SVGStyleElement) {
       const rules = [...(elem.sheet?.cssRules ?? [])];
@@ -38,7 +66,9 @@ export function updateColors(doc: Document, update: (css: string) => string) {
         if (rule instanceof CSSStyleRule) {
           for (const prop of COLOR_PROPS) {
             try {
-              rule.style[prop] = update(rule.style[prop]);
+              rule.style[prop] = update(
+                d3color.color(rule.style[prop])!,
+              ).toString();
             } catch {
               // noop
             }
@@ -50,7 +80,9 @@ export function updateColors(doc: Document, update: (css: string) => string) {
     } else if (elem instanceof SVGElement) {
       for (const prop of COLOR_PROPS) {
         try {
-          elem.style[prop] = update(elem.style[prop]);
+          elem.style[prop] = update(
+            d3color.color(elem.style[prop])!,
+          ).toString();
         } catch {
           // noop
         }
