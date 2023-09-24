@@ -4,7 +4,6 @@ import {
   SliderFilledTrack,
   SliderThumb,
   SliderTrack,
-  Switch,
   Tooltip,
 } from "@chakra-ui/react";
 import { PropsWithChildren, ReactElement, useCallback } from "react";
@@ -24,8 +23,6 @@ function EditorHeader({ children }: PropsWithChildren): ReactElement {
 export default function Editor({
   colors,
   modifyColors,
-  quadratic,
-  toggleQuad,
   increments,
   setIncrements,
   download,
@@ -34,8 +31,6 @@ export default function Editor({
 }: {
   colors: Map<string, [string, boolean]>;
   modifyColors: (action: Action) => void;
-  quadratic: boolean;
-  toggleQuad: () => void;
   increments: number;
   setIncrements: (inc: number) => void;
   download: () => void;
@@ -93,7 +88,10 @@ export default function Editor({
         addColor={addColor}
       />
       <EditorHeader>Dicretizations</EditorHeader>
-      <p>Drag the slider to change the number of dicrete opacities</p>
+      <p>
+        Drag the slider to change the number of dicrete opacities, this produces
+        a more posterized appearance.
+      </p>
       <div className="px-4">
         <Slider
           defaultValue={increments}
@@ -108,14 +106,6 @@ export default function Editor({
           <SliderThumb />
         </Slider>
       </div>
-      <Tooltip label="Toggle for different separation">
-        <div className="flex flex-row justify-between items-baseline">
-          <label htmlFor="quadratic">
-            <EditorHeader>Quadratic Loss</EditorHeader>
-          </label>
-          <Switch id="quadratic" onChange={toggleQuad} isChecked={quadratic} />
-        </div>
-      </Tooltip>
     </>
   );
 }

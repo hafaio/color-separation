@@ -47,33 +47,3 @@ declare module "javascript-lp-solver" {
   /** function to solve an LP */
   export function Solve(args: Model): Result;
 }
-
-declare module "quadprog" {
-  /** the result of an optimization */
-  export interface Result {
-    /** the solution */
-    solution: [unknown, ...number[]];
-    /** the lagrangian of the solution */
-    Lagrangian: [unknown, ...number[]];
-    /** the optimal value of the solution */
-    value: [unknown, number];
-    /** the solution without constraints */
-    unconstrained_solution: [unknown, ...number[]];
-    /** the number of iterations */
-    iterations: [unknown, number, number];
-    /** the active constraints */
-    iact: [unknown, ...number[]];
-    /** an error message */
-    message: string;
-  }
-
-  /** function to solve a QP */
-  export function solveQP(
-    Dmat: readonly [unknown, ...(readonly [unknown, ...number[]])[]],
-    dvec: readonly [unknown, ...number[]],
-    Amat: readonly [unknown, ...(readonly [unknown, ...number[]])[]],
-    bvec: readonly [unknown, ...number[]],
-    meq?: number,
-    factorized?: readonly [unknown, number],
-  ): Result;
-}

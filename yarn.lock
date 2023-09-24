@@ -5204,7 +5204,6 @@ __metadata:
     postcss: ^8.4.30
     prettier: ^3.0.3
     prettier-plugin-organize-imports: ^3.2.3
-    quadprog: ^1.6.1
     react: ^18.2.0
     react-dom: ^18.2.0
     react-dropzone: ^14.2.3
@@ -8792,13 +8791,6 @@ __metadata:
   version: 6.0.3
   resolution: "pure-rand@npm:6.0.3"
   checksum: d08701cfd1528c5f9cdca996776c498c92767722561f9b8f9e62645d5025c8a3bf60b90f76f262aaab124e6bb1d58e1b0850722dbca2846a19b708801956e56b
-  languageName: node
-  linkType: hard
-
-"quadprog@npm:^1.6.1":
-  version: 1.6.1
-  resolution: "quadprog@npm:1.6.1"
-  checksum: b74d28e9aca9dc7eee2ee1cb0eb5c7c7e1cc06a74dcd3f16e7d0eb0be64a1c22802edb652ca4d218d015c323d127bf0c3f7615e4e88cf8feaf7766c6bc5a24d2
   languageName: node
   linkType: hard
 

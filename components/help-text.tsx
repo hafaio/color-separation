@@ -15,14 +15,11 @@ export default function HelpText({
       <div className="space-y-1 flex-grow">
         <p>
           Separate an SVG into spot colors; useful for risograph printing.
-          Currently this assumes a naive color model, and printing on white.
+          Currently this assumes a naive subtractive color model, that works
+          reasonably, but could probably be improved.
         </p>
         <ol className="list-decimal ml-4">
-          <li>
-            Upload your SVG by clicking above or dropping it anywhere. Your SVG
-            can contain opacity, but <span className="italic">must not</span>{" "}
-            contain overlapping elements, embedded bitmaps, or gradients.
-          </li>
+          <li>Upload your SVG by clicking above or dropping it anywhere.</li>
           <li>Customize your color pallette by adding colors available.</li>
           <li>
             Select different colors and losses to check our your decomposition.

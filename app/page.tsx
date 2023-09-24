@@ -1,6 +1,7 @@
 "use client";
 
 import { useToast } from "@chakra-ui/react";
+import * as d3color from "d3-color";
 import { saveAs } from "file-saver";
 import {
   ReactElement,
@@ -19,24 +20,23 @@ import UploadButton from "../components/upload-button";
 import { extractColors, updateColors } from "../utils/extract";
 import { colorSeparation } from "../utils/sep";
 
-// FIXME remove quadratic loss, not as good
-// FIXME make sure that opacities are capped at 1, because they don't seem to
-// be for lighter colors, so off whites render as really dark
-// FIXME change the color parsing. Right now we translate opacity to white, but
-// I think we should just preserve opacity. This should work, but we'll need to
-// make sure for download we convery the color to grayscale, not to black with
-// opacity.
-// FIXME colors I think it all colors present, but we shouldn't need that,
-// instead, update should just compute the colors lazily as it finds them,
-// saving the storage here.
-// FIXME update should now only compute the expected new color, and download
-// should compute the component
 // FIXME add a png version of parsed where raw is the raw image url and doc is
-// some javascritp image representation
+// some javascript image representation
+// FIXME also handle svgs with embedded rasters
 interface Parsed {
   readonly raw: string;
   readonly doc: Document;
   readonly colors: readonly string[];
+}
+
+function* activeColors(
+  existingColors: Map<string, [string, boolean]>,
+): IterableIterator<[string, string]> {
+  for (const [color, [name, active]] of existingColors) {
+    if (active) {
+      yield [color, name];
+    }
+  }
 }
 
 export default function App(): ReactElement {
@@ -77,7 +77,6 @@ export default function App(): ReactElement {
   const [[altered, mapping], setAltered] = useState<
     [string | undefined, Map<string, number[]>]
   >([undefined, new Map<string, number[]>()]);
-  const [quadratic, toggleQuad] = useReducer((state: boolean) => !state, false);
   const [increments, setIncrements] = useState(0);
 
   useEffect(() => {
@@ -85,56 +84,56 @@ export default function App(): ReactElement {
       setAltered([undefined, new Map<string, number[]>()]);
     } else {
       const pool = [];
-      for (const [color, [, active]] of colors) {
-        if (active) {
-          pool.push(color);
-        }
+      for (const [color] of activeColors(colors)) {
+        pool.push(color);
       }
 
-      const newMapping = new Map<string, number[]>();
+      const weights = new Map<string, number[]>();
       const update = new Map<string, string>();
       for (const target of parsed.colors) {
         const { opacities, color } = colorSeparation(target, pool, {
-          quadratic,
           increments,
         });
-        newMapping.set(target, opacities);
+        weights.set(target, opacities);
         update.set(target, color);
       }
 
       const render = parsed.doc.cloneNode(true) as Document;
-      updateColors(render, update);
+      updateColors(render, (css: string) => {
+        const orig = d3color.color(css)!;
+        const updated = d3color.color(update.get(orig.formatHex())!)!;
+        return updated.copy({ opacity: orig.opacity }).toString();
+      });
       const serial = new XMLSerializer();
       const rendered = serial.serializeToString(render);
       setAltered([
         `data:image/svg+xml,${encodeURIComponent(rendered)}`,
-        newMapping,
+        weights,
       ]);
     }
-  }, [colors, quadratic, increments, parsed, setAltered]);
+  }, [colors, increments, parsed, setAltered]);
 
   const download = useCallback(() => {
     if (parsed && mapping.size && fileName) {
       const baseName = fileName.slice(0, fileName.lastIndexOf(".")) || fileName;
       const serial = new XMLSerializer();
-      let i = 0;
-      for (const [color, [name, active]] of colors) {
-        if (active) {
-          const update = new Map<string, string>();
-          for (const color of parsed.colors) {
-            const opacity = mapping.get(color)![i];
-            // FIXME switch to d3-color format
-            const hex = Math.round(255 * (1 - opacity)).toString(16);
-            const grey = `#${hex}${hex}${hex}`;
-            update.set(color, grey);
-          }
-          const render = parsed.doc.cloneNode(true) as Document;
-          updateColors(render, update);
-          const rendered = serial.serializeToString(render);
-          const blob = new Blob([rendered], { type: "image/svg+xml" });
-          saveAs(blob, `${baseName}_${name.replace(" ", "_")}.svg`);
-          i++;
-        }
+
+      const pool = [];
+      for (const [, name] of activeColors(colors)) {
+        pool.push(name);
+      }
+
+      for (const [ind, name] of pool.entries()) {
+        const render = parsed.doc.cloneNode(true) as Document;
+        updateColors(render, (css: string) => {
+          const orig = d3color.color(css)!;
+          const opacity = mapping.get(orig.formatHex())![ind];
+          const updated = d3color.gray((1 - opacity) * 100);
+          return updated.copy({ opacity: orig.opacity }).toString();
+        });
+        const rendered = serial.serializeToString(render);
+        const blob = new Blob([rendered], { type: "image/svg+xml" });
+        saveAs(blob, `${baseName}_${name.replace(" ", "_")}.svg`);
       }
     }
   }, [parsed, mapping, colors, fileName]);
@@ -173,8 +172,6 @@ export default function App(): ReactElement {
       <Editor
         colors={colors}
         modifyColors={modifyColors}
-        quadratic={quadratic}
-        toggleQuad={toggleQuad}
         increments={increments}
         setIncrements={setIncrements}
         download={download}

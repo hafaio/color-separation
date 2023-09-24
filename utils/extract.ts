@@ -1,4 +1,4 @@
-import { parseCSS } from "./color";
+import * as d3color from "d3-color";
 
 const COLOR_PROPS = ["fill", "stroke", "stopColor"] as const;
 
@@ -10,7 +10,7 @@ export function extractColors(doc: Document): Set<string> {
         if (rule instanceof CSSStyleRule) {
           for (const prop of COLOR_PROPS) {
             try {
-              colors.add(parseCSS(rule.style[prop]));
+              colors.add(d3color.color(rule.style[prop])!.formatHex());
             } catch {
               // noop
             }
@@ -20,7 +20,7 @@ export function extractColors(doc: Document): Set<string> {
     } else if (elem instanceof SVGElement) {
       for (const prop of COLOR_PROPS) {
         try {
-          colors.add(parseCSS(elem.style[prop]));
+          colors.add(d3color.color(elem.style[prop])!.formatHex());
         } catch {
           // noop
         }
@@ -30,7 +30,7 @@ export function extractColors(doc: Document): Set<string> {
   return colors;
 }
 
-export function updateColors(doc: Document, map: Map<string, string>) {
+export function updateColors(doc: Document, update: (css: string) => string) {
   for (const elem of doc.querySelectorAll("*")) {
     if (elem instanceof SVGStyleElement) {
       const rules = [...(elem.sheet?.cssRules ?? [])];
@@ -38,8 +38,7 @@ export function updateColors(doc: Document, map: Map<string, string>) {
         if (rule instanceof CSSStyleRule) {
           for (const prop of COLOR_PROPS) {
             try {
-              const color = parseCSS(rule.style[prop]);
-              rule.style[prop] = map.get(color) ?? "";
+              rule.style[prop] = update(rule.style[prop]);
             } catch {
               // noop
             }
@@ -51,8 +50,7 @@ export function updateColors(doc: Document, map: Map<string, string>) {
     } else if (elem instanceof SVGElement) {
       for (const prop of COLOR_PROPS) {
         try {
-          const color = parseCSS(elem.style[prop]);
-          elem.style[prop] = map.get(color) ?? "";
+          elem.style[prop] = update(elem.style[prop]);
         } catch {
           // noop
         }
