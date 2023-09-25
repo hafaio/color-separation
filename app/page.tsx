@@ -28,9 +28,6 @@ import {
 import { colorSeparation } from "../utils/sep";
 import { copyImageData } from "../utils/utils";
 
-const parser = new DOMParser();
-const serial = new XMLSerializer();
-
 // FIXME also handle svgs with embedded rasters
 interface ParsedVector {
   format: "image/svg+xml";
@@ -98,6 +95,8 @@ export default function App(): ReactElement {
   >([undefined, new Map<string, number[]>()]);
   const [increments, setIncrements] = useState(0);
 
+  // FIXME separate every async into a separate state so we can gradually update
+  // For new a new rendering we might want to disable colors, or set a blur over the image
   useEffect(() => {
     if (!parsed || ![...colors.values()].some(([, active]) => active)) {
       setAltered([undefined, new Map<string, number[]>()]);
@@ -137,8 +136,10 @@ export default function App(): ReactElement {
             break;
           case "image/svg+xml":
             {
+              // FIXME just keep the doc, and create update functions...
               const render = parsed.doc.cloneNode(true) as Document;
-              updateSvgColors(render, updater);
+              await updateSvgColors(render, updater);
+              const serial = new XMLSerializer();
               const rendered = serial.serializeToString(render);
               url = `data:image/svg+xml,${encodeURIComponent(rendered)}`;
             }
@@ -181,6 +182,7 @@ export default function App(): ReactElement {
             case "image/svg+xml":
               const svg = parsed.doc.cloneNode(true) as Document;
               updateSvgColors(svg, updater);
+              const serial = new XMLSerializer();
               const rendered = serial.serializeToString(svg);
               blob = new Blob([rendered], { type: "image/svg+xml" });
               ext = "svg";
@@ -225,8 +227,10 @@ export default function App(): ReactElement {
         case "image/svg+xml":
           try {
             const text = await file.text();
+            const parser = new DOMParser();
             const svg = parser.parseFromString(text, file.type);
-            const colors = [...extractSvgColors(svg)];
+            const uniqColors = await extractSvgColors(svg);
+            const colors = [...uniqColors];
 
             setParsed({
               format: file.type,

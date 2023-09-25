@@ -1,6 +1,8 @@
 import * as d3color from "d3-color";
 import { ColorSpaceObject } from "d3-color";
+import { blob2imgdata, blob2url, imgdata2blob, url2blob } from "./conversion";
 
+// FIXME make iterable
 export function extractBmpColors(img: ImageData): Set<string> {
   const colors = new Set<string>();
   const size = img.width * img.height * 4;
@@ -27,8 +29,9 @@ export function updateBmpColors(
 
 const COLOR_PROPS = ["fill", "stroke", "stopColor"] as const;
 
-export function extractSvgColors(doc: Document): Set<string> {
+export async function extractSvgColors(doc: Document): Promise<Set<string>> {
   const colors = new Set<string>();
+  const proms = [];
   for (const elem of doc.querySelectorAll("*")) {
     if (elem instanceof SVGStyleElement) {
       for (const rule of elem.sheet?.cssRules ?? []) {
@@ -42,6 +45,9 @@ export function extractSvgColors(doc: Document): Set<string> {
           }
         }
       }
+    } else if (elem instanceof SVGImageElement) {
+      // FIXME this could be another svg, so we should parse accordingly
+      proms.push(url2blob(elem.href.baseVal).then(blob2imgdata));
     } else if (elem instanceof SVGElement) {
       for (const prop of COLOR_PROPS) {
         try {
@@ -52,13 +58,21 @@ export function extractSvgColors(doc: Document): Set<string> {
       }
     }
   }
+
+  const imgs = await Promise.all(proms);
+  for (const img of imgs) {
+    for (const color of extractBmpColors(img)) {
+      colors.add(color);
+    }
+  }
   return colors;
 }
 
-export function updateSvgColors(
+export async function updateSvgColors(
   doc: Document,
   update: (css: ColorSpaceObject) => ColorSpaceObject,
 ) {
+  const proms = [];
   for (const elem of doc.querySelectorAll("*")) {
     if (elem instanceof SVGStyleElement) {
       const rules = [...(elem.sheet?.cssRules ?? [])];
@@ -77,6 +91,18 @@ export function updateSvgColors(
       }
       // need to actually update the style
       elem.textContent = rules.map((rule) => rule.cssText).join("\n");
+    } else if (elem instanceof SVGImageElement) {
+      // FIXME this could be another svg, so we should parse accordingly
+      proms.push(
+        (async () => {
+          const blob = await url2blob(elem.href.baseVal);
+          const img = await blob2imgdata(blob);
+          await updateBmpColors(img, update);
+          const updated = await imgdata2blob(img);
+          const url = await blob2url(updated);
+          elem.setAttribute("href", url);
+        })(),
+      );
     } else if (elem instanceof SVGElement) {
       for (const prop of COLOR_PROPS) {
         try {
@@ -89,4 +115,5 @@ export function updateSvgColors(
       }
     }
   }
+  await Promise.all(proms);
 }

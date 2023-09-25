@@ -1,3 +1,8 @@
+export async function url2blob(url: string): Promise<Blob> {
+  const resp = await fetch(url);
+  return await resp.blob();
+}
+
 export function blob2url(blob: Blob): Promise<string> {
   const reader = new FileReader();
   return new Promise<string>((resolve) => {
