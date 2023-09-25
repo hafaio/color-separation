@@ -4,6 +4,7 @@ import { useToast } from "@chakra-ui/react";
 import * as d3color from "d3-color";
 import { ColorSpaceObject } from "d3-color";
 import { saveAs } from "file-saver";
+import { extension } from "mime-types";
 import {
   ReactElement,
   useCallback,
@@ -18,42 +19,9 @@ import Footer from "../components/footer";
 import HelpText from "../components/help-text";
 import Theme from "../components/theme";
 import UploadButton from "../components/upload-button";
-import { blob2imgdata, blob2url, imgdata2blob } from "../utils/conversion";
-import {
-  extractBmpColors,
-  extractSvgColors,
-  updateBmpColors,
-  updateSvgColors,
-} from "../utils/extract";
+import { blob2url } from "../utils/conversion";
+import { extractColors, updateColors } from "../utils/extract";
 import { colorSeparation } from "../utils/sep";
-import { copyImageData } from "../utils/utils";
-
-// FIXME also handle svgs with embedded rasters
-interface ParsedVector {
-  format: "image/svg+xml";
-  raw: string;
-  doc: Document;
-  colors: readonly string[];
-}
-
-interface ParsedRaster {
-  format: "image/png" | "image/jpeg";
-  raw: string;
-  img: ImageData;
-  colors: readonly string[];
-}
-
-type Parsed = Readonly<ParsedVector> | Readonly<ParsedRaster>;
-
-function* activeColors(
-  existingColors: Map<string, [string, boolean]>,
-): IterableIterator<[string, string]> {
-  for (const [color, [name, active]] of existingColors) {
-    if (active) {
-      yield [color, name];
-    }
-  }
-}
 
 export default function App(): ReactElement {
   const [showRaw, setShowRaw] = useState(false);
@@ -65,7 +33,10 @@ export default function App(): ReactElement {
   const toast = useToast();
 
   const [fileName, setFileName] = useState<string | undefined>();
-  const [parsed, setParsed] = useState<Parsed | undefined | null>();
+  const [parsed, setParsed] = useState<string | undefined | null>();
+  const [pcolors, setPcolors] = useState<
+    readonly string[] | undefined | null
+  >();
   const [colors, modifyColors] = useReducer(
     (
       existingColors: Map<string, [string, boolean]>,
@@ -95,20 +66,38 @@ export default function App(): ReactElement {
   >([undefined, new Map<string, number[]>()]);
   const [increments, setIncrements] = useState(0);
 
-  // FIXME separate every async into a separate state so we can gradually update
-  // For new a new rendering we might want to disable colors, or set a blur over the image
+  // FIXME move computation heavy calls to webworkers
   useEffect(() => {
-    if (!parsed || ![...colors.values()].some(([, active]) => active)) {
+    if (parsed && !pcolors) {
+      (async () => {
+        const colors = new Set<string>();
+        for await (const color of extractColors(parsed)) {
+          colors.add(color.formatHex());
+        }
+        setPcolors([...colors]);
+      })();
+    }
+  }, [setPcolors, parsed, pcolors]);
+
+  useEffect(() => {
+    if (
+      !parsed ||
+      !pcolors ||
+      ![...colors.values()].some(([, active]) => active)
+    ) {
       setAltered([undefined, new Map<string, number[]>()]);
     } else {
+      // FIXME we may want to set state so that we disable the color picker
       const pool = [];
-      for (const [color] of activeColors(colors)) {
-        pool.push(color);
+      for (const [color, [, active]] of colors) {
+        if (active) {
+          pool.push(color);
+        }
       }
 
       const weights = new Map<string, number[]>();
       const update = new Map<string, string>();
-      for (const target of parsed.colors) {
+      for (const target of pcolors) {
         const { opacities, color } = colorSeparation(target, pool, {
           increments,
         });
@@ -121,46 +110,26 @@ export default function App(): ReactElement {
         return updated.copy({ opacity: orig.opacity });
       };
 
-      // FIXME might want to move this into a webworker
       (async () => {
-        let url;
-        switch (parsed.format) {
-          case "image/png":
-          case "image/jpeg":
-            {
-              const render = copyImageData(parsed.img);
-              updateBmpColors(render, updater);
-              const blob = await imgdata2blob(render);
-              url = await blob2url(blob);
-            }
-            break;
-          case "image/svg+xml":
-            {
-              // FIXME just keep the doc, and create update functions...
-              const render = parsed.doc.cloneNode(true) as Document;
-              await updateSvgColors(render, updater);
-              const serial = new XMLSerializer();
-              const rendered = serial.serializeToString(render);
-              url = `data:image/svg+xml,${encodeURIComponent(rendered)}`;
-            }
-            break;
-          default:
-            parsed satisfies never;
-        }
+        const updated = await updateColors(parsed, updater);
+        const url = await blob2url(updated);
         setAltered([url, weights]);
       })();
     }
-  }, [colors, increments, parsed, setAltered]);
+  }, [colors, increments, parsed, pcolors, setAltered]);
 
-  const download = useCallback(() => {
+  const download = useCallback(async () => {
     if (parsed && mapping.size && fileName) {
       const baseName = fileName.slice(0, fileName.lastIndexOf(".")) || fileName;
 
       const pool = [];
-      for (const [, name] of activeColors(colors)) {
-        pool.push(name);
+      for (const [name, active] of colors.values()) {
+        if (active) {
+          pool.push(name);
+        }
       }
 
+      const proms = [];
       for (const [ind, name] of pool.entries()) {
         const updater = (orig: ColorSpaceObject): ColorSpaceObject => {
           const opacity = mapping.get(orig.formatHex())![ind];
@@ -168,29 +137,14 @@ export default function App(): ReactElement {
           return updated.copy({ opacity: orig.opacity });
         };
 
-        // FIXME might want to move this into a webworker
-        (async () => {
-          let blob, ext;
-          switch (parsed.format) {
-            case "image/png":
-            case "image/jpeg":
-              const bmp = copyImageData(parsed.img);
-              updateBmpColors(bmp, updater);
-              blob = await imgdata2blob(bmp);
-              ext = "png";
-              break;
-            case "image/svg+xml":
-              const svg = parsed.doc.cloneNode(true) as Document;
-              updateSvgColors(svg, updater);
-              const serial = new XMLSerializer();
-              const rendered = serial.serializeToString(svg);
-              blob = new Blob([rendered], { type: "image/svg+xml" });
-              ext = "svg";
-              break;
-          }
-          saveAs(blob, `${baseName}_${name.replace(" ", "_")}.${ext}`);
-        })();
+        proms.push(
+          updateColors(parsed, updater).then((blob) => {
+            const ext = extension(blob.type);
+            saveAs(blob, `${baseName}_${name.replace(" ", "_")}.${ext}`);
+          }),
+        );
       }
+      await Promise.all(proms);
     }
   }, [parsed, mapping, colors, fileName]);
 
@@ -198,70 +152,27 @@ export default function App(): ReactElement {
     async (file: File) => {
       setFileName(file.name);
       setParsed(null);
+      setPcolors(null);
       setShowHelp(false);
-      switch (file.type) {
-        case "image/jpeg":
-        case "image/png":
-          try {
-            const [img, raw] = await Promise.all([
-              blob2imgdata(file),
-              blob2url(file),
-            ]);
-            const colors = [...extractBmpColors(img)];
-
-            setParsed({
-              format: file.type,
-              raw,
-              img,
-              colors,
-            });
-          } catch (ex) {
-            toast({
-              title: "Problem loading image",
-              status: "error",
-              position: "bottom-left",
-            });
-            setParsed(undefined);
-          }
-          break;
-        case "image/svg+xml":
-          try {
-            const text = await file.text();
-            const parser = new DOMParser();
-            const svg = parser.parseFromString(text, file.type);
-            const uniqColors = await extractSvgColors(svg);
-            const colors = [...uniqColors];
-
-            setParsed({
-              format: file.type,
-              raw: `data:image/svg+xml,${encodeURIComponent(text)}`,
-              doc: svg,
-              colors,
-            });
-          } catch (ex) {
-            console.error(ex);
-            toast({
-              title: "Problem loading SVG",
-              status: "error",
-              position: "bottom-left",
-            });
-            setParsed(undefined);
-          }
-          break;
-        default:
-          toast({
-            title: `unknown file type: ${file.type}`,
-            status: "error",
-            position: "bottom-left",
-          });
-          setParsed(undefined);
+      try {
+        const raw = await blob2url(file);
+        setParsed(raw);
+      } catch (ex) {
+        console.error(ex);
+        toast({
+          title: "Couldn't load file",
+          status: "error",
+          position: "bottom-left",
+        });
+        setParsed(undefined);
       }
     },
     [setParsed, setFileName, setShowHelp, toast],
   );
 
+  // FIXME change rendering if pcolors is null
   const editor =
-    parsed && !showHelp ? (
+    parsed && pcolors && !showHelp ? (
       <Editor
         colors={colors}
         modifyColors={modifyColors}
@@ -272,9 +183,9 @@ export default function App(): ReactElement {
         setShowRaw={setShowRaw}
       />
     ) : (
-      <HelpText closeable={!!parsed} />
+      <HelpText closeable={!!parsed && !!pcolors} />
     );
-  const src = showRaw ? parsed?.raw : altered ?? parsed?.raw;
+  const src = showRaw ? parsed : altered ?? parsed;
   const img = src ? (
     <img
       src={src}
@@ -291,7 +202,7 @@ export default function App(): ReactElement {
       }
       if (rejected.length) {
         toast({
-          title: "Dropped file was not an SVG",
+          title: "Dropped file was not an SVG, PNG, or JPEG",
           status: "error",
           position: "bottom-left",
         });
