@@ -14,11 +14,12 @@
  * @packageDocumentation
  */
 import * as d3color from "d3-color";
+import { ColorSpaceObject } from "d3-color";
 import { Constraint, Solve as solveLP, Variable } from "javascript-lp-solver";
 
 export interface Result {
   error: number;
-  color: string;
+  color: ColorSpaceObject;
   opacities: number[];
 }
 
@@ -34,20 +35,20 @@ export interface Result {
  *   always be multiples of 1 / increments; if 0 then use continuous increments
  */
 export function colorSeparation(
-  cssTarget: string,
-  cssPool: readonly string[],
+  target: ColorSpaceObject,
+  pool: readonly ColorSpaceObject[],
   {
     increments = 0,
   }: {
     increments?: number;
   } = {},
 ): Result {
-  const target = d3color.color(cssTarget)!.rgb();
-  const pool = cssPool.map((color) => d3color.color(color)!.rgb());
+  const rgbTarget = target.rgb();
+  const rgbPool = pool.map((color) => color.rgb());
 
   const mult = Math.max(increments, 1);
   const weighting = 1e-7;
-  const weights = pool.map(({ r, g, b }) => weighting * (r + g + b));
+  const weights = rgbPool.map(({ r, g, b }) => weighting * (r + g + b));
 
   const constraints: Record<string, Constraint> = {};
   const variables: Record<string, Variable> = {};
@@ -63,7 +64,7 @@ export function colorSeparation(
   }
 
   for (const prop of ["r", "g", "b"] as const) {
-    const channel = 255 - target[prop];
+    const channel = 255 - rgbTarget[prop];
 
     // slack varaible for absolute value loss
     const up = `up ${prop}`;
@@ -75,7 +76,7 @@ export function colorSeparation(
     const slack = `slack ${prop}`;
     variables[slack] = { error: 1, [up]: -1, [dn]: 1 };
 
-    for (const [j, seper] of pool.entries()) {
+    for (const [j, seper] of rgbPool.entries()) {
       const sep = 255 - seper[prop];
       const mix = `mix ${j}`;
       variables[mix][up] = sep / mult;
@@ -103,7 +104,7 @@ export function colorSeparation(
   if (!feasible || !bounded) {
     throw new Error("couldn't find bounded feasible solution");
   }
-  const opacities = pool.map((_, i) =>
+  const opacities = rgbPool.map((_, i) =>
     Math.min((vals[`mix ${i}`] ?? 0) / mult, 1),
   );
   const cond = opacities.reduce((s, v, i) => s + weights[i] * v, 0);
@@ -111,7 +112,7 @@ export function colorSeparation(
   const total = opacities.reduce((t, o) => t + o, 0);
 
   const closest = d3color.gray(100 * (1 - total)).rgb();
-  for (const [i, color] of pool.entries()) {
+  for (const [i, color] of rgbPool.entries()) {
     const opacity = opacities[i];
     for (const prop of ["r", "g", "b"] as const) {
       closest[prop] += color[prop] * opacity;
@@ -120,6 +121,6 @@ export function colorSeparation(
   return {
     error,
     opacities,
-    color: closest.formatHex(),
+    color: closest.clamp(),
   };
 }

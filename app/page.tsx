@@ -34,9 +34,6 @@ export default function App(): ReactElement {
 
   const [fileName, setFileName] = useState<string | undefined>();
   const [parsed, setParsed] = useState<string | undefined | null>();
-  const [pcolors, setPcolors] = useState<
-    readonly string[] | undefined | null
-  >();
   const [colors, modifyColors] = useReducer(
     (
       existingColors: Map<string, [string, boolean]>,
@@ -61,76 +58,75 @@ export default function App(): ReactElement {
     new Map<string, [string, boolean]>(),
   );
 
-  const [[altered, mapping], setAltered] = useState<
-    [string | undefined, Map<string, number[]>]
-  >([undefined, new Map<string, number[]>()]);
+  const [preview, setPreview] = useState<string | undefined>();
   const [increments, setIncrements] = useState(0);
 
   // FIXME move computation heavy calls to webworkers
+  // FIXME make sure all async effects set a loading state in some way...
   useEffect(() => {
-    if (parsed && !pcolors) {
-      (async () => {
-        const colors = new Set<string>();
-        for await (const color of extractColors(parsed)) {
-          colors.add(color.formatHex());
-        }
-        setPcolors([...colors]);
-      })();
-    }
-  }, [setPcolors, parsed, pcolors]);
-
-  useEffect(() => {
-    if (
-      !parsed ||
-      !pcolors ||
-      ![...colors.values()].some(([, active]) => active)
-    ) {
-      setAltered([undefined, new Map<string, number[]>()]);
+    if (!parsed || ![...colors.values()].some(([, active]) => active)) {
+      setPreview(undefined);
     } else {
-      // FIXME we may want to set state so that we disable the color picker
+      // FIXME set state so that we disable the color picker
       const pool = [];
       for (const [color, [, active]] of colors) {
         if (active) {
-          pool.push(color);
+          pool.push(d3color.color(color)!);
         }
       }
 
-      const weights = new Map<string, number[]>();
-      const update = new Map<string, string>();
-      for (const target of pcolors) {
-        const { opacities, color } = colorSeparation(target, pool, {
-          increments,
-        });
-        weights.set(target, opacities);
-        update.set(target, color);
-      }
-
-      const updater = (orig: ColorSpaceObject): ColorSpaceObject => {
-        const updated = d3color.color(update.get(orig.formatHex())!)!;
-        return updated.copy({ opacity: orig.opacity });
-      };
-
+      // FIXME move this into separate call
       (async () => {
+        const update = new Map<string, ColorSpaceObject>();
+        for await (const target of extractColors(parsed)) {
+          const key = target.formatHex();
+          if (update.has(key)) continue;
+          const { color } = colorSeparation(target, pool, {
+            increments,
+          });
+          update.set(key, color);
+        }
+
+        const updater = (orig: ColorSpaceObject): ColorSpaceObject => {
+          return update.get(orig.formatHex())!.copy({ opacity: orig.opacity });
+        };
+
         const updated = await updateColors(parsed, updater);
         const url = await blob2url(updated);
-        setAltered([url, weights]);
-      })();
+        setPreview(url);
+      })().catch(() => {
+        // FIXME
+      });
     }
-  }, [colors, increments, parsed, pcolors, setAltered]);
+  }, [colors, increments, parsed, setPreview]);
 
   const download = useCallback(async () => {
-    if (parsed && mapping.size && fileName) {
+    if (parsed && fileName) {
+      // FIXME try/catch
       const baseName = fileName.slice(0, fileName.lastIndexOf(".")) || fileName;
 
       const pool = [];
-      for (const [name, active] of colors.values()) {
+      const names = [];
+      for (const [color, [name, active]] of colors) {
         if (active) {
-          pool.push(name);
+          pool.push(d3color.color(color)!);
+          names.push(name);
         }
       }
 
+      // FIXME move this out
+      const mapping = new Map<string, number[]>();
+      for await (const target of extractColors(parsed)) {
+        const key = target.formatHex();
+        if (mapping.has(key)) continue;
+        const { opacities } = colorSeparation(target, pool, {
+          increments,
+        });
+        mapping.set(key, opacities);
+      }
+
       const proms = [];
-      for (const [ind, name] of pool.entries()) {
+      for (const [ind, name] of names.entries()) {
         const updater = (orig: ColorSpaceObject): ColorSpaceObject => {
           const opacity = mapping.get(orig.formatHex())![ind];
           const updated = d3color.gray((1 - opacity) * 100);
@@ -146,13 +142,12 @@ export default function App(): ReactElement {
       }
       await Promise.all(proms);
     }
-  }, [parsed, mapping, colors, fileName]);
+  }, [parsed, colors, fileName]);
 
   const onUpload = useCallback(
     async (file: File) => {
       setFileName(file.name);
       setParsed(null);
-      setPcolors(null);
       setShowHelp(false);
       try {
         const raw = await blob2url(file);
@@ -170,9 +165,8 @@ export default function App(): ReactElement {
     [setParsed, setFileName, setShowHelp, toast],
   );
 
-  // FIXME change rendering if pcolors is null
   const editor =
-    parsed && pcolors && !showHelp ? (
+    parsed && !showHelp ? (
       <Editor
         colors={colors}
         modifyColors={modifyColors}
@@ -183,9 +177,9 @@ export default function App(): ReactElement {
         setShowRaw={setShowRaw}
       />
     ) : (
-      <HelpText closeable={!!parsed && !!pcolors} />
+      <HelpText closeable={!!parsed} />
     );
-  const src = showRaw ? parsed : altered ?? parsed;
+  const src = showRaw ? parsed : preview ?? parsed;
   const img = src ? (
     <img
       src={src}
