@@ -1,10 +1,12 @@
+// FIXME rename
 import * as d3color from "d3-color";
 import { ColorSpaceObject } from "d3-color";
 import { blob2imgdata, blob2url, imgdata2blob } from "./conversion";
+import { colorSeparation } from "./sep";
 
 const COLOR_PROPS = ["fill", "stroke", "stopColor"] as const;
 
-export async function* extractColors(
+async function* extractColors(
   url: string,
 ): AsyncIterableIterator<ColorSpaceObject> {
   const resp = await fetch(url);
@@ -49,19 +51,7 @@ export async function* extractColors(
   }
 }
 
-export function updateBmpColors(
-  img: ImageData,
-  update: (css: ColorSpaceObject) => ColorSpaceObject,
-) {}
-
-export async function updateSvgColors(
-  doc: Document,
-  update: (css: ColorSpaceObject) => ColorSpaceObject,
-) {
-  const proms = [];
-}
-
-export async function updateColors(
+async function updateColors(
   url: string,
   update: (css: ColorSpaceObject) => ColorSpaceObject,
 ): Promise<Blob> {
@@ -123,4 +113,54 @@ export async function updateColors(
   } else {
     throw new Error(`unhandled url type: ${blob.type}`);
   }
+}
+
+export async function genPreview(
+  image: string,
+  pool: readonly ColorSpaceObject[],
+  increments: number,
+): Promise<Blob> {
+  const update = new Map<string, ColorSpaceObject>();
+  for await (const target of extractColors(image)) {
+    const key = target.formatHex();
+    if (update.has(key)) continue;
+    const { color } = colorSeparation(target, pool, {
+      increments,
+    });
+    update.set(key, color);
+  }
+
+  const updater = (orig: ColorSpaceObject): ColorSpaceObject => {
+    return update.get(orig.formatHex())!.copy({ opacity: orig.opacity });
+  };
+
+  return await updateColors(image, updater);
+}
+
+export async function genSeparation(
+  image: string,
+  pool: readonly ColorSpaceObject[],
+  increments: number,
+): Promise<Blob[]> {
+  const mapping = new Map<string, number[]>();
+  for await (const target of extractColors(image)) {
+    const key = target.formatHex();
+    if (mapping.has(key)) continue;
+    const { opacities } = colorSeparation(target, pool, {
+      increments,
+    });
+    mapping.set(key, opacities);
+  }
+
+  return await Promise.all(
+    pool.map((_, ind) => {
+      const updater = (orig: ColorSpaceObject): ColorSpaceObject => {
+        const opacity = mapping.get(orig.formatHex())![ind];
+        const updated = d3color.gray((1 - opacity) * 100);
+        return updated.copy({ opacity: orig.opacity });
+      };
+
+      return updateColors(image, updater);
+    }),
+  );
 }

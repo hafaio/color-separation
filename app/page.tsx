@@ -2,7 +2,6 @@
 
 import { useToast } from "@chakra-ui/react";
 import * as d3color from "d3-color";
-import { ColorSpaceObject } from "d3-color";
 import { saveAs } from "file-saver";
 import { extension } from "mime-types";
 import {
@@ -20,8 +19,7 @@ import HelpText from "../components/help-text";
 import Theme from "../components/theme";
 import UploadButton from "../components/upload-button";
 import { blob2url } from "../utils/conversion";
-import { extractColors, updateColors } from "../utils/extract";
-import { colorSeparation } from "../utils/sep";
+import { genPreview, genSeparation } from "../utils/separate";
 
 export default function App(): ReactElement {
   const [showRaw, setShowRaw] = useState(false);
@@ -75,23 +73,8 @@ export default function App(): ReactElement {
         }
       }
 
-      // FIXME move this into separate call
       (async () => {
-        const update = new Map<string, ColorSpaceObject>();
-        for await (const target of extractColors(parsed)) {
-          const key = target.formatHex();
-          if (update.has(key)) continue;
-          const { color } = colorSeparation(target, pool, {
-            increments,
-          });
-          update.set(key, color);
-        }
-
-        const updater = (orig: ColorSpaceObject): ColorSpaceObject => {
-          return update.get(orig.formatHex())!.copy({ opacity: orig.opacity });
-        };
-
-        const updated = await updateColors(parsed, updater);
+        const updated = await genPreview(parsed, pool, increments);
         const url = await blob2url(updated);
         setPreview(url);
       })().catch(() => {
@@ -114,33 +97,12 @@ export default function App(): ReactElement {
         }
       }
 
-      // FIXME move this out
-      const mapping = new Map<string, number[]>();
-      for await (const target of extractColors(parsed)) {
-        const key = target.formatHex();
-        if (mapping.has(key)) continue;
-        const { opacities } = colorSeparation(target, pool, {
-          increments,
-        });
-        mapping.set(key, opacities);
-      }
-
-      const proms = [];
+      const blobs = await genSeparation(parsed, pool, increments);
       for (const [ind, name] of names.entries()) {
-        const updater = (orig: ColorSpaceObject): ColorSpaceObject => {
-          const opacity = mapping.get(orig.formatHex())![ind];
-          const updated = d3color.gray((1 - opacity) * 100);
-          return updated.copy({ opacity: orig.opacity });
-        };
-
-        proms.push(
-          updateColors(parsed, updater).then((blob) => {
-            const ext = extension(blob.type);
-            saveAs(blob, `${baseName}_${name.replace(" ", "_")}.${ext}`);
-          }),
-        );
+        const blob = blobs[ind];
+        const ext = extension(blob.type);
+        saveAs(blob, `${baseName}_${name.replace(" ", "_")}.${ext}`);
       }
-      await Promise.all(proms);
     }
   }, [parsed, colors, fileName]);
 
