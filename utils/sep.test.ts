@@ -36,8 +36,12 @@ test("duo linear", () => {
 
 test("cmy linear", () => {
   const colors = ["#00ffff", "#ff00ff", "#ffff00"];
-  const { error } = colorSeparation("#dd8822", colors);
+  const { error, opacities } = colorSeparation("#dd8822", colors);
   expect(error).toBeLessThan(1e-3);
+  const [c, m, y] = opacities;
+  expect(1 - c).toBeCloseTo(0xdd / 0xff);
+  expect(1 - m).toBeCloseTo(0x88 / 0xff);
+  expect(1 - y).toBeCloseTo(0x22 / 0xff);
 });
 
 test("underconstrained linear", () => {
