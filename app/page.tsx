@@ -68,7 +68,6 @@ export default function App(): ReactElement {
   const [preview, setPreview] = useState<string | undefined>();
   const [increments, setIncrements] = useState(0);
 
-  // FIXME move computation heavy calls to webworkers
   useEffect(() => {
     if (!parsed || ![...colors.values()].some(([, active]) => active)) {
       setPreview(undefined);

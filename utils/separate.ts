@@ -1,7 +1,7 @@
 import * as d3color from "d3-color";
 import { ColorSpaceObject } from "d3-color";
+import { bulkColorSeparation } from "./bulksep";
 import { blob2url, url2blob } from "./conversion";
-import { colorSeparation } from "./sep";
 
 const COLOR_PROPS = ["fill", "stroke", "stopColor"] as const;
 
@@ -127,15 +127,14 @@ export async function genPreview(
   pool: readonly ColorSpaceObject[],
   increments: number,
 ): Promise<Blob> {
-  const update = new Map<string, ColorSpaceObject>();
+  // FIXME creating this set is still a performance hit, ideally we'd make this
+  // a readable stream and construct the set on the other side.
+  const uniq = new Set<string>();
   for await (const target of extractColors(blob)) {
-    const key = target.formatHex();
-    if (update.has(key)) continue;
-    const { color } = colorSeparation(target, pool, {
-      increments,
-    });
-    update.set(key, color);
+    uniq.add(target.formatHex());
   }
+  const [prevs] = await bulkColorSeparation(uniq, pool, increments);
+  const update = new Map(prevs);
 
   const updater = (orig: ColorSpaceObject): ColorSpaceObject => {
     return update.get(orig.formatHex())!.copy({ opacity: orig.opacity });
@@ -148,17 +147,13 @@ export async function genSeparation(
   blob: Blob,
   pool: readonly ColorSpaceObject[],
   increments: number,
-): Promise<Blob[]> {
-  const mapping = new Map<string, number[]>();
+): Promise<readonly Blob[]> {
+  const uniq = new Set<string>();
   for await (const target of extractColors(blob)) {
-    const key = target.formatHex();
-    if (mapping.has(key)) continue;
-    const { opacities } = colorSeparation(target, pool, {
-      increments,
-    });
-    mapping.set(key, opacities);
+    uniq.add(target.formatHex());
   }
-
+  const [, opacs] = await bulkColorSeparation(uniq, pool, increments);
+  const mapping = new Map(opacs);
   return await Promise.all(
     pool.map((_, ind) => {
       const updater = (orig: ColorSpaceObject): ColorSpaceObject => {
