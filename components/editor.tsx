@@ -104,7 +104,7 @@ export default function Editor({
       <div className="px-4">
         <Slider
           defaultValue={increments}
-          onChange={setIncrements}
+          onChangeEnd={setIncrements}
           min={0}
           max={7}
           step={1}

@@ -1,6 +1,6 @@
 import * as d3color from "d3-color";
 import { ColorSpaceObject } from "d3-color";
-import { blob2imgdata, blob2url, imgdata2blob, url2blob } from "./conversion";
+import { blob2url, url2blob } from "./conversion";
 import { colorSeparation } from "./sep";
 
 const COLOR_PROPS = ["fill", "stroke", "stopColor"] as const;
@@ -9,10 +9,16 @@ async function* extractColors(
   blob: Blob,
 ): AsyncIterableIterator<ColorSpaceObject> {
   if (blob.type === "image/png" || blob.type === "image/jpeg") {
-    const img = await blob2imgdata(blob);
-    const size = img.width * img.height * 4;
-    for (let i = 0; i < size; i += 4) {
-      yield d3color.rgb(img.data[i], img.data[i + 1], img.data[i + 2]);
+    const bmp = await createImageBitmap(blob);
+    const canvas = new OffscreenCanvas(bmp.width, bmp.height);
+    const ctx = canvas.getContext("2d")!;
+    ctx.drawImage(bmp, 0, 0);
+    const { data } = ctx.getImageData(0, 0, bmp.width, bmp.height, {
+      colorSpace: "srgb",
+    });
+    for (let i = 0; i < data.length; i += 4) {
+      const [r, g, b] = data.slice(i, i + 3);
+      yield d3color.rgb(r, g, b);
     }
   } else if (blob.type === "image/svg+xml") {
     const text = await blob.text();
@@ -54,19 +60,20 @@ async function updateColors(
   update: (css: ColorSpaceObject) => ColorSpaceObject,
 ): Promise<Blob> {
   if (blob.type === "image/png" || blob.type === "image/jpeg") {
-    // FIXME instead of converting entirely to imagedata, convert to canvas,
-    // iterate over canvas colors, modifying canvas in place, then turn back
-    // into blob
-    const img = await blob2imgdata(blob);
-    const size = img.width * img.height * 4;
-    for (let i = 0; i < size; i += 4) {
-      const color = d3color.rgb(img.data[i], img.data[i + 1], img.data[i + 2]);
-      const { r, g, b } = update(color).rgb();
-      img.data[i] = r;
-      img.data[i + 1] = g;
-      img.data[i + 2] = b;
+    const bmp = await createImageBitmap(blob);
+    const canvas = new OffscreenCanvas(bmp.width, bmp.height);
+    const ctx = canvas.getContext("2d")!;
+    ctx.drawImage(bmp, 0, 0);
+    const imdat = ctx.getImageData(0, 0, bmp.width, bmp.height, {
+      colorSpace: "srgb",
+    });
+    for (let i = 0; i < imdat.data.length; i += 4) {
+      const [ri, gi, bi] = imdat.data.slice(i, i + 3);
+      const { r, g, b } = update(d3color.rgb(ri, gi, bi)).rgb();
+      imdat.data.set([r, g, b], i);
     }
-    return await imgdata2blob(img);
+    ctx.putImageData(imdat, 0, 0);
+    return await canvas.convertToBlob();
   } else if (blob.type === "image/svg+xml") {
     const text = await blob.text();
     const parser = new DOMParser();
