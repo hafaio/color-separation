@@ -14,7 +14,8 @@ import PalletteInput from "./pallette-input";
 export type Action =
   | { action: "set"; colors: readonly (readonly [string, string])[] }
   | { action: "add"; color: string; name: string }
-  | { action: "toggle"; color: string };
+  | { action: "toggle"; color: string }
+  | { action: "clear" };
 
 function EditorHeader({ children }: PropsWithChildren): ReactElement {
   return <h2 className="font-bold text-lg">{children}</h2>;

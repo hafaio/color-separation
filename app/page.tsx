@@ -40,7 +40,6 @@ export default function App(): ReactElement {
   const imgBox = useRef(null);
 
   const [parsed, setParsed] = useState<Parsed | undefined | null>();
-  // FIXME just make a list since copies are O(n) anyway
   const [colors, modifyColors] = useReducer(
     (
       existingColors: Map<string, [string, boolean]>,
@@ -54,12 +53,18 @@ export default function App(): ReactElement {
         const copy = new Map(existingColors);
         copy.set(action.color, [action.name, false]);
         return copy;
-      } else {
-        // action.action === "toggle"
+      } else if (action.action === "toggle") {
         const copy = new Map(existingColors);
         const [name, state] = copy.get(action.color)!;
         copy.set(action.color, [name, !state]);
         return copy;
+      } else if (action.action === "clear") {
+        return new Map(
+          [...existingColors].map(([color, [name]]) => [color, [name, false]]),
+        );
+      } else {
+        action satisfies never;
+        throw new Error("unreachable");
       }
     },
     new Map<string, [string, boolean]>(),
@@ -142,7 +147,7 @@ export default function App(): ReactElement {
       try {
         setParsed(null);
         setShowHelp(false);
-        // FIXME clear colors
+        modifyColors({ action: "clear" });
 
         const { clientWidth, clientHeight } = imgBox.current!;
         const blob = await resizeBlob(file, clientWidth, clientHeight);

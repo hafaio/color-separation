@@ -32,8 +32,6 @@ export async function* bulkColorSeparation(
   pool: readonly ColorSpaceObject[],
   increments: number,
 ): AsyncIterableIterator<[string, ColorSpaceObject, number[]]> {
-  // FIXME creating this set is still a performance hit, ideally we'd make this
-  // a readable stream and construct the set on the other side.
   const colors = new Set<string>();
   for await (const color of colorIter) {
     colors.add(color.formatHex());

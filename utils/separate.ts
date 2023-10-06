@@ -127,6 +127,10 @@ export async function genPreview(
   pool: readonly ColorSpaceObject[],
   increments: number,
 ): Promise<Blob> {
+  // TODO some part of this initial setup still takes some time. I'm not sure
+  // if it's the image munging, or the color set creation. Theoretically, we
+  // could create the color set on the webworker, but in practice this turned
+  // out not as fast, and it's not clear why.
   const update = new Map<string, ColorSpaceObject>();
   for await (const [key, color] of bulkColorSeparation(
     extractColors(blob),
