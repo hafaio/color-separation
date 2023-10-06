@@ -127,14 +127,14 @@ export async function genPreview(
   pool: readonly ColorSpaceObject[],
   increments: number,
 ): Promise<Blob> {
-  // FIXME creating this set is still a performance hit, ideally we'd make this
-  // a readable stream and construct the set on the other side.
-  const uniq = new Set<string>();
-  for await (const target of extractColors(blob)) {
-    uniq.add(target.formatHex());
+  const update = new Map<string, ColorSpaceObject>();
+  for await (const [key, color] of bulkColorSeparation(
+    extractColors(blob),
+    pool,
+    increments,
+  )) {
+    update.set(key, color);
   }
-  const [prevs] = await bulkColorSeparation(uniq, pool, increments);
-  const update = new Map(prevs);
 
   const updater = (orig: ColorSpaceObject): ColorSpaceObject => {
     return update.get(orig.formatHex())!.copy({ opacity: orig.opacity });
@@ -148,12 +148,15 @@ export async function genSeparation(
   pool: readonly ColorSpaceObject[],
   increments: number,
 ): Promise<readonly Blob[]> {
-  const uniq = new Set<string>();
-  for await (const target of extractColors(blob)) {
-    uniq.add(target.formatHex());
+  const mapping = new Map<string, number[]>();
+  for await (const [key, , opac] of bulkColorSeparation(
+    extractColors(blob),
+    pool,
+    increments,
+  )) {
+    mapping.set(key, opac);
   }
-  const [, opacs] = await bulkColorSeparation(uniq, pool, increments);
-  const mapping = new Map(opacs);
+
   return await Promise.all(
     pool.map((_, ind) => {
       const updater = (orig: ColorSpaceObject): ColorSpaceObject => {

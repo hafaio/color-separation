@@ -27,13 +27,17 @@ function* zipOpacs(
   }
 }
 
-export async function bulkColorSeparation(
-  colors: Set<string>,
+export async function* bulkColorSeparation(
+  colorIter: AsyncIterable<ColorSpaceObject>,
   pool: readonly ColorSpaceObject[],
   increments: number,
-): Promise<
-  [Iterable<[string, ColorSpaceObject]>, Iterable<[string, number[]]>]
-> {
+): AsyncIterableIterator<[string, ColorSpaceObject, number[]]> {
+  // FIXME creating this set is still a performance hit, ideally we'd make this
+  // a readable stream and construct the set on the other side.
+  const colors = new Set<string>();
+  for await (const color of colorIter) {
+    colors.add(color.formatHex());
+  }
   const transPool = new Uint8ClampedArray(pool.length * 3);
   for (const [i, color] of pool.entries()) {
     const { r, g, b } = color.rgb();
@@ -55,5 +59,11 @@ export async function bulkColorSeparation(
     throw new Error("unreachable");
   }
   const { prevs, opacs } = res;
-  return [zipPrevs(colors, prevs), zipOpacs(colors, opacs)];
+  let i = 0;
+  for (const key of colors) {
+    const [r, g, b] = prevs.slice(i * 3, (i + 1) * 3);
+    const opac = [...opacs.slice(i * pool.length, (i + 1) * pool.length)];
+    yield [key, d3color.rgb(r, g, b), opac];
+    i++;
+  }
 }
