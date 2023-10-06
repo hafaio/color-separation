@@ -24,12 +24,15 @@ import { genPreview, genSeparation } from "../utils/separate";
 export default function App(): ReactElement {
   const [showRaw, setShowRaw] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [colorsActive, setColorsActive] = useState(true);
+  const [isDownloading, setDownloading] = useState(false);
   const toggleHelp = useCallback(
     () => setShowHelp(!showHelp),
     [showHelp, setShowHelp],
   );
   const toast = useToast();
 
+  // FIXME consolidate this
   const [fileName, setFileName] = useState<string | undefined>();
   const [parsed, setParsed] = useState<string | undefined | null>();
   const [colors, modifyColors] = useReducer(
@@ -60,58 +63,80 @@ export default function App(): ReactElement {
   const [increments, setIncrements] = useState(0);
 
   // FIXME move computation heavy calls to webworkers
-  // FIXME make sure all async effects set a loading state in some way...
   useEffect(() => {
     if (!parsed || ![...colors.values()].some(([, active]) => active)) {
       setPreview(undefined);
     } else {
-      // FIXME set state so that we disable the color picker
-      const pool = [];
-      for (const [color, [, active]] of colors) {
-        if (active) {
-          pool.push(d3color.color(color)!);
-        }
-      }
+      void (async () => {
+        try {
+          setColorsActive(false);
 
-      (async () => {
-        const updated = await genPreview(parsed, pool, increments);
-        const url = await blob2url(updated);
-        setPreview(url);
-      })().catch(() => {
-        // FIXME
-      });
+          const pool = [];
+          for (const [color, [, active]] of colors) {
+            if (active) {
+              pool.push(d3color.color(color)!);
+            }
+          }
+          const updated = await genPreview(parsed, pool, increments);
+          const url = await blob2url(updated);
+          setPreview(url);
+        } catch (ex) {
+          console.error(ex);
+          setPreview(undefined);
+          toast({
+            title: "Couldn't separate image",
+            status: "error",
+            position: "bottom-left",
+          });
+        } finally {
+          setColorsActive(true);
+        }
+      })();
     }
   }, [colors, increments, parsed, setPreview]);
 
   const download = useCallback(async () => {
     if (parsed && fileName) {
-      // FIXME try/catch
-      const baseName = fileName.slice(0, fileName.lastIndexOf(".")) || fileName;
+      try {
+        setDownloading(true);
+        const baseName =
+          fileName.slice(0, fileName.lastIndexOf(".")) || fileName;
 
-      const pool = [];
-      const names = [];
-      for (const [color, [name, active]] of colors) {
-        if (active) {
-          pool.push(d3color.color(color)!);
-          names.push(name);
+        const pool = [];
+        const names = [];
+        for (const [color, [name, active]] of colors) {
+          if (active) {
+            pool.push(d3color.color(color)!);
+            names.push(name);
+          }
         }
-      }
 
-      const blobs = await genSeparation(parsed, pool, increments);
-      for (const [ind, name] of names.entries()) {
-        const blob = blobs[ind];
-        const ext = extension(blob.type);
-        saveAs(blob, `${baseName}_${name.replace(" ", "_")}.${ext}`);
+        const blobs = await genSeparation(parsed, pool, increments);
+        for (const [ind, name] of names.entries()) {
+          const blob = blobs[ind];
+          const ext = extension(blob.type);
+          saveAs(blob, `${baseName}_${name.replace(" ", "_")}.${ext}`);
+        }
+      } catch (ex) {
+        console.error(ex);
+        toast({
+          title: "Couldn't separate image",
+          status: "error",
+          position: "bottom-left",
+        });
+      } finally {
+        setDownloading(false);
       }
     }
   }, [parsed, colors, fileName]);
 
   const onUpload = useCallback(
     async (file: File) => {
-      setFileName(file.name);
-      setParsed(null);
-      setShowHelp(false);
       try {
+        setFileName(file.name);
+        setParsed(null);
+        setShowHelp(false);
+
         const raw = await blob2url(file);
         setParsed(raw);
       } catch (ex) {
@@ -132,9 +157,11 @@ export default function App(): ReactElement {
       <Editor
         colors={colors}
         modifyColors={modifyColors}
+        colorsActive={colorsActive}
         increments={increments}
         setIncrements={setIncrements}
         download={download}
+        isDownloading={isDownloading}
         showRaw={showRaw}
         setShowRaw={setShowRaw}
       />

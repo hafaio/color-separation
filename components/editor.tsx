@@ -23,17 +23,21 @@ function EditorHeader({ children }: PropsWithChildren): ReactElement {
 export default function Editor({
   colors,
   modifyColors,
+  colorsActive,
   increments,
   setIncrements,
   download,
+  isDownloading,
   showRaw,
   setShowRaw,
 }: {
   colors: Map<string, [string, boolean]>;
   modifyColors: (action: Action) => void;
+  colorsActive: boolean;
   increments: number;
   setIncrements: (inc: number) => void;
   download: () => void;
+  isDownloading: boolean;
   showRaw: boolean;
   setShowRaw: (val: boolean) => void;
 }): ReactElement {
@@ -73,13 +77,18 @@ export default function Editor({
           isDisabled={!selected}
           onClick={download}
           leftIcon={<FaFileDownload />}
+          isLoading={isDownloading}
         >
           Export Separation
         </Button>
       </Tooltip>
       <EditorHeader>Colors</EditorHeader>
       <p>Click a color to toggle its use in the separation</p>
-      <ColorPicker colors={colors} toggleColor={toggleColor} />
+      <ColorPicker
+        colors={colors}
+        toggleColor={toggleColor}
+        disabled={!colorsActive}
+      />
       <EditorHeader>Pallette</EditorHeader>
       <p>Add new colors or reset to a pallette</p>
       <PalletteInput

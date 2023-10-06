@@ -4,9 +4,11 @@ import ColorButton from "./color-button";
 export default function ColorPicker({
   colors,
   toggleColor,
+  disabled,
 }: {
   colors: Map<string, [string, boolean]>;
   toggleColor: (color: string) => void;
+  disabled: boolean;
 }): ReactElement {
   // TODO for colors we know, we may want to use their cmyk variant since it
   // doesn't use the simple 1-1
@@ -16,6 +18,7 @@ export default function ColorPicker({
       name={name}
       toggleColor={toggleColor}
       active={active}
+      disabled={disabled}
       key={color}
     />
   ));
