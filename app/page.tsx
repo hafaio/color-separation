@@ -9,6 +9,7 @@ import {
   useCallback,
   useEffect,
   useReducer,
+  useRef,
   useState,
 } from "react";
 import { FileRejection, useDropzone } from "react-dropzone";
@@ -18,7 +19,7 @@ import Footer from "../components/footer";
 import HelpText from "../components/help-text";
 import Theme from "../components/theme";
 import UploadButton from "../components/upload-button";
-import { blob2url, url2blob } from "../utils/conversion";
+import { blob2url, resizeBlob, url2blob } from "../utils/conversion";
 import { genPreview, genSeparation } from "../utils/separate";
 
 interface Parsed {
@@ -36,10 +37,10 @@ export default function App(): ReactElement {
     [showHelp, setShowHelp],
   );
   const toast = useToast();
+  const imgBox = useRef(null);
 
-  // FIXME consolidate this
-  const [fileName, setFileName] = useState<string | undefined>();
-  const [parsed, setParsed] = useState<string | undefined | null>();
+  const [parsed, setParsed] = useState<Parsed | undefined | null>();
+  // FIXME just make a list since copies are O(n) anyway
   const [colors, modifyColors] = useReducer(
     (
       existingColors: Map<string, [string, boolean]>,
@@ -82,7 +83,7 @@ export default function App(): ReactElement {
               pool.push(d3color.color(color)!);
             }
           }
-          const blob = await url2blob(parsed);
+          const blob = await url2blob(parsed.preview);
           const updated = await genPreview(blob, pool, increments);
           const url = await blob2url(updated);
           setPreview(url);
@@ -102,9 +103,10 @@ export default function App(): ReactElement {
   }, [colors, increments, parsed, setPreview, toast]);
 
   const download = useCallback(async () => {
-    if (parsed && fileName) {
+    if (parsed) {
       try {
         setDownloading(true);
+        const fileName = parsed.raw.name;
         const baseName =
           fileName.slice(0, fileName.lastIndexOf(".")) || fileName;
 
@@ -117,8 +119,7 @@ export default function App(): ReactElement {
           }
         }
 
-        const blob = await url2blob(parsed);
-        const blobs = await genSeparation(blob, pool, increments);
+        const blobs = await genSeparation(parsed.raw, pool, increments);
         for (const [ind, name] of names.entries()) {
           const blob = blobs[ind];
           const ext = extension(blob.type);
@@ -135,17 +136,19 @@ export default function App(): ReactElement {
         setDownloading(false);
       }
     }
-  }, [parsed, colors, fileName, toast, increments]);
+  }, [parsed, colors, toast, increments]);
 
   const onUpload = useCallback(
     async (file: File) => {
       try {
-        setFileName(file.name);
         setParsed(null);
         setShowHelp(false);
+        // FIXME clear colors
 
-        const raw = await blob2url(file);
-        setParsed(raw);
+        const { clientWidth, clientHeight } = imgBox.current!;
+        const blob = await resizeBlob(file, clientWidth, clientHeight);
+        const prev = await blob2url(blob);
+        setParsed({ raw: file, preview: prev });
       } catch (ex) {
         console.error(ex);
         toast({
@@ -156,7 +159,7 @@ export default function App(): ReactElement {
         setParsed(undefined);
       }
     },
-    [setParsed, setFileName, setShowHelp, toast],
+    [setParsed, setShowHelp, toast],
   );
 
   const editor =
@@ -175,7 +178,7 @@ export default function App(): ReactElement {
     ) : (
       <HelpText closeable={!!parsed} />
     );
-  const src = showRaw ? parsed : preview ?? parsed;
+  const src = showRaw ? parsed?.preview : preview ?? parsed?.preview;
   const img = src ? (
     <img
       src={src}
@@ -230,7 +233,9 @@ export default function App(): ReactElement {
           </div>
           <Footer helpDisabled={!parsed} toggleHelp={toggleHelp} />
         </div>
-        <div className="h-full w-full overflow-auto">{img}</div>
+        <div className="h-full w-full overflow-auto" ref={imgBox}>
+          {img}
+        </div>
       </div>
     </Theme>
   );

@@ -27,3 +27,25 @@ export async function imgdata2blob(img: ImageData): Promise<Blob> {
   canvas.getContext("bitmaprenderer")!.transferFromImageBitmap(bmp);
   return await canvas.convertToBlob();
 }
+
+export async function resizeBlob(
+  inp: Blob,
+  clientWidth: number,
+  clientHeight: number,
+): Promise<Blob> {
+  if (inp.type === "image/svg+xml") {
+    return inp; // don't resize svgs
+  }
+  const bmp = await createImageBitmap(inp);
+  if (bmp.width <= clientWidth && bmp.height <= clientHeight) {
+    return inp; // small enough
+  }
+  const wh = bmp.width * clientHeight;
+  const hw = bmp.height * clientWidth;
+  const [width, height] =
+    wh > hw ? [clientWidth, hw / bmp.width] : [wh / bmp.height, clientHeight];
+  const canvas = new OffscreenCanvas(width, height);
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(bmp, 0, 0, width, height);
+  return await canvas.convertToBlob();
+}
