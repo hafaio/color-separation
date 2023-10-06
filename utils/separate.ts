@@ -1,16 +1,13 @@
-// FIXME rename
 import * as d3color from "d3-color";
 import { ColorSpaceObject } from "d3-color";
-import { blob2imgdata, blob2url, imgdata2blob } from "./conversion";
+import { blob2imgdata, blob2url, imgdata2blob, url2blob } from "./conversion";
 import { colorSeparation } from "./sep";
 
 const COLOR_PROPS = ["fill", "stroke", "stopColor"] as const;
 
 async function* extractColors(
-  url: string,
+  blob: Blob,
 ): AsyncIterableIterator<ColorSpaceObject> {
-  const resp = await fetch(url);
-  const blob = await resp.blob();
   if (blob.type === "image/png" || blob.type === "image/jpeg") {
     const img = await blob2imgdata(blob);
     const size = img.width * img.height * 4;
@@ -34,7 +31,8 @@ async function* extractColors(
           }
         }
       } else if (elem instanceof SVGImageElement) {
-        for await (const color of extractColors(elem.href.baseVal)) {
+        const href = await url2blob(elem.href.baseVal);
+        for await (const color of extractColors(href)) {
           yield color;
         }
       } else if (elem instanceof SVGElement) {
@@ -52,12 +50,13 @@ async function* extractColors(
 }
 
 async function updateColors(
-  url: string,
+  blob: Blob,
   update: (css: ColorSpaceObject) => ColorSpaceObject,
 ): Promise<Blob> {
-  const resp = await fetch(url);
-  const blob = await resp.blob();
   if (blob.type === "image/png" || blob.type === "image/jpeg") {
+    // FIXME instead of converting entirely to imagedata, convert to canvas,
+    // iterate over canvas colors, modifying canvas in place, then turn back
+    // into blob
     const img = await blob2imgdata(blob);
     const size = img.width * img.height * 4;
     for (let i = 0; i < size; i += 4) {
@@ -92,7 +91,8 @@ async function updateColors(
       } else if (elem instanceof SVGImageElement) {
         proms.push(
           (async () => {
-            const blob = await updateColors(elem.href.baseVal, update);
+            const href = await url2blob(elem.href.baseVal);
+            const blob = await updateColors(href, update);
             const url = await blob2url(blob);
             elem.setAttribute("href", url);
           })(),
@@ -116,12 +116,12 @@ async function updateColors(
 }
 
 export async function genPreview(
-  image: string,
+  blob: Blob,
   pool: readonly ColorSpaceObject[],
   increments: number,
 ): Promise<Blob> {
   const update = new Map<string, ColorSpaceObject>();
-  for await (const target of extractColors(image)) {
+  for await (const target of extractColors(blob)) {
     const key = target.formatHex();
     if (update.has(key)) continue;
     const { color } = colorSeparation(target, pool, {
@@ -134,16 +134,16 @@ export async function genPreview(
     return update.get(orig.formatHex())!.copy({ opacity: orig.opacity });
   };
 
-  return await updateColors(image, updater);
+  return await updateColors(blob, updater);
 }
 
 export async function genSeparation(
-  image: string,
+  blob: Blob,
   pool: readonly ColorSpaceObject[],
   increments: number,
 ): Promise<Blob[]> {
   const mapping = new Map<string, number[]>();
-  for await (const target of extractColors(image)) {
+  for await (const target of extractColors(blob)) {
     const key = target.formatHex();
     if (mapping.has(key)) continue;
     const { opacities } = colorSeparation(target, pool, {
@@ -160,7 +160,7 @@ export async function genSeparation(
         return updated.copy({ opacity: orig.opacity });
       };
 
-      return updateColors(image, updater);
+      return updateColors(blob, updater);
     }),
   );
 }

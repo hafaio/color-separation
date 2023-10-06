@@ -18,8 +18,13 @@ import Footer from "../components/footer";
 import HelpText from "../components/help-text";
 import Theme from "../components/theme";
 import UploadButton from "../components/upload-button";
-import { blob2url } from "../utils/conversion";
+import { blob2url, url2blob } from "../utils/conversion";
 import { genPreview, genSeparation } from "../utils/separate";
+
+interface Parsed {
+  raw: File;
+  preview: string;
+}
 
 export default function App(): ReactElement {
   const [showRaw, setShowRaw] = useState(false);
@@ -77,7 +82,8 @@ export default function App(): ReactElement {
               pool.push(d3color.color(color)!);
             }
           }
-          const updated = await genPreview(parsed, pool, increments);
+          const blob = await url2blob(parsed);
+          const updated = await genPreview(blob, pool, increments);
           const url = await blob2url(updated);
           setPreview(url);
         } catch (ex) {
@@ -93,7 +99,7 @@ export default function App(): ReactElement {
         }
       })();
     }
-  }, [colors, increments, parsed, setPreview]);
+  }, [colors, increments, parsed, setPreview, toast]);
 
   const download = useCallback(async () => {
     if (parsed && fileName) {
@@ -111,7 +117,8 @@ export default function App(): ReactElement {
           }
         }
 
-        const blobs = await genSeparation(parsed, pool, increments);
+        const blob = await url2blob(parsed);
+        const blobs = await genSeparation(blob, pool, increments);
         for (const [ind, name] of names.entries()) {
           const blob = blobs[ind];
           const ext = extension(blob.type);
@@ -128,7 +135,7 @@ export default function App(): ReactElement {
         setDownloading(false);
       }
     }
-  }, [parsed, colors, fileName]);
+  }, [parsed, colors, fileName, toast, increments]);
 
   const onUpload = useCallback(
     async (file: File) => {
