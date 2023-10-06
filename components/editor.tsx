@@ -23,23 +23,23 @@ function EditorHeader({ children }: PropsWithChildren): ReactElement {
 export default function Editor({
   colors,
   modifyColors,
-  colorsActive,
   increments,
   setIncrements,
   download,
   isDownloading,
   showRaw,
   setShowRaw,
+  rendering,
 }: {
   colors: Map<string, [string, boolean]>;
   modifyColors: (action: Action) => void;
-  colorsActive: boolean;
   increments: number;
   setIncrements: (inc: number) => void;
   download: () => void;
   isDownloading: boolean;
   showRaw: boolean;
   setShowRaw: (val: boolean) => void;
+  rendering: boolean;
 }): ReactElement {
   const exportText = colors.size
     ? undefined
@@ -87,7 +87,7 @@ export default function Editor({
       <ColorPicker
         colors={colors}
         toggleColor={toggleColor}
-        disabled={!colorsActive}
+        disabled={rendering}
       />
       <EditorHeader>Pallette</EditorHeader>
       <p>Add new colors or reset to a pallette</p>
@@ -108,6 +108,7 @@ export default function Editor({
           min={0}
           max={7}
           step={1}
+          isDisabled={rendering}
         >
           <SliderTrack>
             <SliderFilledTrack />

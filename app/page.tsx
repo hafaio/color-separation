@@ -30,7 +30,7 @@ interface Parsed {
 export default function App(): ReactElement {
   const [showRaw, setShowRaw] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
-  const [colorsActive, setColorsActive] = useState(true);
+  const [rendering, setRendering] = useState(false);
   const [isDownloading, setDownloading] = useState(false);
   const toggleHelp = useCallback(
     () => setShowHelp(!showHelp),
@@ -75,7 +75,7 @@ export default function App(): ReactElement {
     } else {
       void (async () => {
         try {
-          setColorsActive(false);
+          setRendering(true);
 
           const pool = [];
           for (const [color, [, active]] of colors) {
@@ -96,7 +96,7 @@ export default function App(): ReactElement {
             position: "bottom-left",
           });
         } finally {
-          setColorsActive(true);
+          setRendering(false);
         }
       })();
     }
@@ -167,13 +167,13 @@ export default function App(): ReactElement {
       <Editor
         colors={colors}
         modifyColors={modifyColors}
-        colorsActive={colorsActive}
         increments={increments}
         setIncrements={setIncrements}
         download={download}
         isDownloading={isDownloading}
         showRaw={showRaw}
         setShowRaw={setShowRaw}
+        rendering={rendering}
       />
     ) : (
       <HelpText closeable={!!parsed} />
