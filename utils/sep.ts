@@ -111,7 +111,8 @@ export function colorSeparation(
   const error = (result - cond) / (3 * 255);
   const total = opacities.reduce((t, o) => t + o, 0);
 
-  const closest = d3color.gray(100 * (1 - total)).rgb();
+  const init = 255 * (1 - total);
+  const closest = d3color.rgb(init, init, init);
   for (const [i, color] of rgbPool.entries()) {
     const opacity = opacities[i];
     for (const prop of ["r", "g", "b"] as const) {

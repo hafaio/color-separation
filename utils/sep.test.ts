@@ -1,8 +1,8 @@
-import { color, gray } from "d3-color";
+import { color, rgb } from "d3-color";
 import { colorSeparation } from "./sep";
 
 test("grey linear", () => {
-  const colors = [gray(0)];
+  const colors = [rgb(0, 0, 0)];
   const {
     error,
     opacities: [opacity],
@@ -37,12 +37,47 @@ test("duo linear", () => {
 
 test("cmy linear", () => {
   const colors = ["#00ffff", "#ff00ff", "#ffff00"].map((c) => color(c)!);
-  const { error, opacities } = colorSeparation(color("#dd8822")!, colors);
+  const {
+    color: res,
+    error,
+    opacities,
+  } = colorSeparation(color("#dd8822")!, colors);
   expect(error).toBeLessThan(1e-3);
+  expect(res.formatHex()).toBe("#dd8822");
   const [c, m, y] = opacities;
   expect(1 - c).toBeCloseTo(0xdd / 0xff);
   expect(1 - m).toBeCloseTo(0x88 / 0xff);
   expect(1 - y).toBeCloseTo(0x22 / 0xff);
+});
+
+test("cmy white", () => {
+  const colors = ["#00ffff", "#ff00ff", "#ffff00"].map((c) => color(c)!);
+  const {
+    color: res,
+    error,
+    opacities,
+  } = colorSeparation(color("#ffffff")!, colors);
+  expect(error).toBeLessThan(1e-3);
+  expect(res.formatHex()).toBe("#ffffff");
+  const [c, m, y] = opacities;
+  expect(c).toBeCloseTo(0);
+  expect(m).toBeCloseTo(0);
+  expect(y).toBeCloseTo(0);
+});
+
+test("cmy black", () => {
+  const colors = ["#00ffff", "#ff00ff", "#ffff00"].map((c) => color(c)!);
+  const {
+    color: res,
+    error,
+    opacities,
+  } = colorSeparation(color("#000000")!, colors);
+  expect(error).toBeLessThan(1e-3);
+  expect(res.formatHex()).toBe("#000000");
+  const [c, m, y] = opacities;
+  expect(c).toBeCloseTo(1);
+  expect(m).toBeCloseTo(1);
+  expect(y).toBeCloseTo(1);
 });
 
 test("underconstrained linear", () => {
@@ -57,7 +92,7 @@ test("underconstrained linear black", () => {
   const colors = ["#00ffff", "#ff00ff", "#ffff00", "#000000"].map(
     (c) => color(c)!,
   );
-  const { error, opacities } = colorSeparation(gray(0), colors);
+  const { error, opacities } = colorSeparation(rgb(0, 0, 0), colors);
   expect(error).toBeLessThan(1e-3);
   expect(opacities).toEqual([0, 0, 0, 1]);
 });
