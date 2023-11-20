@@ -75,8 +75,8 @@ export default function PalletteInput({
   const message = !name
     ? "must name added colors"
     : colors.has(color)
-    ? "can only add unique colors"
-    : undefined;
+      ? "can only add unique colors"
+      : undefined;
 
   return (
     <>
