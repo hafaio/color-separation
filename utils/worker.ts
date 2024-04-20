@@ -2,7 +2,7 @@ import * as d3color from "d3-color";
 import { colorSeparation } from "./sep";
 import { Message, Result } from "./winterface";
 
-addEventListener("message", async (event: MessageEvent<Message>) => {
+addEventListener("message", (event: MessageEvent<Message>) => {
   try {
     const { colors, pool, increments } = event.data;
 
@@ -26,7 +26,9 @@ addEventListener("message", async (event: MessageEvent<Message>) => {
       i++;
     }
     const msg: Result = { typ: "success", prevs, opacs };
-    postMessage(msg, { transfer: [prevs.buffer, opacs.buffer] });
+    postMessage(msg, {
+      transfer: [prevs.buffer as ArrayBuffer, opacs.buffer as ArrayBuffer],
+    });
   } catch (ex) {
     const err = ex instanceof Error ? ex.toString() : "unknown error";
     const res: Result = { typ: "err", err };

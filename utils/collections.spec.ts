@@ -1,3 +1,4 @@
+import { expect, test } from "bun:test";
 import { mapGetDef } from "./collections";
 
 test("mapDefGet()", () => {

@@ -15,7 +15,7 @@ import {
 } from "react";
 
 // more riso colors: https://www.stencil.wiki/colors
-const risoPallette = [
+const risoPalette = [
   ["#f15060", "bright red"],
   ["#ff48b0", "fluorescent pink"],
   ["#ffe800", "yellow"],
@@ -24,7 +24,7 @@ const risoPallette = [
   ["#000000", "black"],
 ] as const;
 
-const cmykPallette = [
+const cmykPalette = [
   ["#00ffff", "cyan"],
   ["#ff00ff", "magenta"],
   ["#ffff00", "yellow"],
@@ -33,43 +33,48 @@ const cmykPallette = [
 
 // FIXME think about this interface more, maybe just have a + icon for adding a
 // color and a clear? And maybe just have presets as well?
-export default function PalletteInput({
+export default function PaletteInput({
   colors,
-  setPallette,
+  setPalette,
   addColor,
 }: {
   colors: Map<string, unknown>;
-  setPallette: (colors: readonly (readonly [string, string])[]) => void;
+  setPalette: (colors: readonly (readonly [string, string])[]) => void;
   addColor: (color: string, name: string) => void;
 }): ReactElement {
-  const palletteChange = (evt: ChangeEvent<HTMLSelectElement>) => {
+  const paletteChange = (evt: ChangeEvent<HTMLSelectElement>) => {
     const val = evt.target.value;
     if (val === "none") {
-      setPallette([]);
+      setPalette([]);
     } else if (val === "riso") {
-      setPallette(risoPallette);
+      setPalette(risoPalette);
     } else if (val === "cmyk") {
-      setPallette(cmykPallette);
+      setPalette(cmykPalette);
     }
   };
-  // default pallette
-  useEffect(() => setPallette(risoPallette), [setPallette]);
+  // default palette
+  useEffect(() => {
+    setPalette(risoPalette);
+  }, [setPalette]);
 
   const [name, setName] = useState("");
   const inputChange = useCallback(
-    (evt: ChangeEvent<HTMLInputElement>) => setName(evt.target.value),
+    (evt: ChangeEvent<HTMLInputElement>) => {
+      setName(evt.target.value);
+    },
     [setName],
   );
   const [color, setColor] = useState("#000000");
   const colorChange = useCallback(
-    (evt: ChangeEvent<HTMLInputElement>) => setColor(evt.target.value),
+    (evt: ChangeEvent<HTMLInputElement>) => {
+      setColor(evt.target.value);
+    },
     [setColor],
   );
 
-  const addClick = useCallback(
-    () => addColor(color, name),
-    [color, name, addColor],
-  );
+  const addClick = useCallback(() => {
+    addColor(color, name);
+  }, [color, name, addColor]);
 
   const valid = name && !colors.has(color);
   const message = !name
@@ -100,7 +105,7 @@ export default function PalletteInput({
           </Tooltip>
         </InputRightAddon>
       </InputGroup>
-      <Select placeholder="Select Pallette" onChange={palletteChange}>
+      <Select placeholder="Select Palette" onChange={paletteChange}>
         <option value="none">None</option>
         <option value="riso">Risograph</option>
         <option value="cmyk">CMYK</option>

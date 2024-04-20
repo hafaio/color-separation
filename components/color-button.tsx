@@ -14,7 +14,9 @@ export default function ColorButton({
   toggleColor: (named: string) => void;
   disabled?: boolean;
 }): ReactElement {
-  const toggle = useCallback(() => toggleColor(color), [color, toggleColor]);
+  const toggle = useCallback(() => {
+    toggleColor(color);
+  }, [color, toggleColor]);
   const col = disabled ? "#cbd5e1" : color;
   const sty = disabled ? "" : "hover:scale-110";
   return (

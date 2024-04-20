@@ -6,7 +6,9 @@ export async function url2blob(url: string): Promise<Blob> {
 export function blob2url(blob: Blob): Promise<string> {
   const reader = new FileReader();
   return new Promise<string>((resolve) => {
-    reader.addEventListener("load", () => resolve(reader.result as string));
+    reader.addEventListener("load", () => {
+      resolve(reader.result as string);
+    });
     reader.readAsDataURL(blob);
   });
 }

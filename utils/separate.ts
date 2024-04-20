@@ -14,6 +14,7 @@ async function* extractColors(
     const ctx = canvas.getContext("2d")!;
     ctx.drawImage(bmp, 0, 0);
     const { data } = ctx.getImageData(0, 0, bmp.width, bmp.height, {
+      // eslint-disable-next-line spellcheck/spell-checker
       colorSpace: "srgb",
     });
     for (let i = 0; i < data.length; i += 4) {
@@ -29,6 +30,7 @@ async function* extractColors(
         for (const rule of elem.sheet?.cssRules ?? []) {
           if (rule instanceof CSSStyleRule) {
             for (const prop of COLOR_PROPS) {
+              // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
               const color = d3color.color(rule.style?.[prop]);
               if (color) {
                 yield color;
@@ -43,6 +45,7 @@ async function* extractColors(
         }
       } else if (elem instanceof SVGElement) {
         for (const prop of COLOR_PROPS) {
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
           const color = d3color.color(elem.style?.[prop]);
           if (color) {
             yield color;
@@ -65,6 +68,7 @@ async function updateColors(
     const ctx = canvas.getContext("2d")!;
     ctx.drawImage(bmp, 0, 0);
     const imdat = ctx.getImageData(0, 0, bmp.width, bmp.height, {
+      // eslint-disable-next-line spellcheck/spell-checker
       colorSpace: "srgb",
     });
     for (let i = 0; i < imdat.data.length; i += 4) {
@@ -86,6 +90,7 @@ async function updateColors(
         for (const rule of rules) {
           if (rule instanceof CSSStyleRule) {
             for (const prop of COLOR_PROPS) {
+              // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
               const init = d3color.color(rule.style?.[prop]);
               if (init) {
                 rule.style[prop] = update(init).toString();
@@ -127,10 +132,11 @@ export async function genPreview(
   pool: readonly ColorSpaceObject[],
   increments: number,
 ): Promise<Blob> {
-  // TODO some part of this initial setup still takes some time. I'm not sure
-  // if it's the image munging, or the color set creation. Theoretically, we
-  // could create the color set on the webworker, but in practice this turned
-  // out not as fast, and it's not clear why.
+  // eslint-disable-next-line spellcheck/spell-checker
+  /* TODO some part of this initial setup still takes some time. I'm not sure
+   * if it's the image munging, or the color set creation. Theoretically, we
+   * could create the color set on the webworker, but in practice this turned
+   * out not as fast, and it's not clear why. */
   const update = new Map<string, ColorSpaceObject>();
   for await (const [key, color] of bulkColorSeparation(
     extractColors(blob),

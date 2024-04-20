@@ -23,6 +23,7 @@ export interface Result {
   opacities: number[];
 }
 
+// eslint-disable-next-line spellcheck/spell-checker
 /**
  * Perform approximate subtractive color separation
  *
@@ -66,7 +67,7 @@ export function colorSeparation(
   for (const prop of ["r", "g", "b"] as const) {
     const channel = 255 - rgbTarget[prop];
 
-    // slack varaible for absolute value loss
+    // slack variable for absolute value loss
     const up = `up ${prop}`;
     constraints[up] = { max: channel };
 

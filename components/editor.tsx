@@ -9,7 +9,7 @@ import {
 import { PropsWithChildren, ReactElement, useCallback } from "react";
 import { FaFileDownload } from "react-icons/fa";
 import ColorPicker from "./color-picker";
-import PalletteInput from "./pallette-input";
+import PaletteInput from "./palette-input";
 
 export type Action =
   | { action: "set"; colors: readonly (readonly [string, string])[] }
@@ -28,7 +28,6 @@ export default function Editor({
   setIncrements,
   download,
   isDownloading,
-  showRaw,
   setShowRaw,
   rendering,
 }: {
@@ -38,27 +37,34 @@ export default function Editor({
   setIncrements: (inc: number) => void;
   download: () => void;
   isDownloading: boolean;
-  showRaw: boolean;
   setShowRaw: (val: boolean) => void;
   rendering: boolean;
 }): ReactElement {
   const exportText = colors.size
     ? undefined
     : "must select at least one color to export";
-  const onDown = useCallback(() => setShowRaw(true), [setShowRaw]);
-  const onUp = useCallback(() => setShowRaw(false), [setShowRaw]);
+  const onDown = useCallback(() => {
+    setShowRaw(true);
+  }, [setShowRaw]);
+  const onUp = useCallback(() => {
+    setShowRaw(false);
+  }, [setShowRaw]);
   const toggleColor = useCallback(
-    (color: string) => modifyColors({ action: "toggle", color }),
+    (color: string) => {
+      modifyColors({ action: "toggle", color });
+    },
     [modifyColors],
   );
-  const setPallette = useCallback(
-    (colors: readonly (readonly [string, string])[]) =>
-      modifyColors({ action: "set", colors }),
+  const setPalette = useCallback(
+    (colors: readonly (readonly [string, string])[]) => {
+      modifyColors({ action: "set", colors });
+    },
     [modifyColors],
   );
   const addColor = useCallback(
-    (color: string, name: string) =>
-      modifyColors({ action: "add", color, name }),
+    (color: string, name: string) => {
+      modifyColors({ action: "add", color, name });
+    },
     [modifyColors],
   );
   const selected = [...colors.values()].some(([, active]) => active);
@@ -90,10 +96,10 @@ export default function Editor({
         toggleColor={toggleColor}
         disabled={rendering}
       />
-      <EditorHeader>Pallette</EditorHeader>
-      <p>Add new colors or reset to a pallette</p>
-      <PalletteInput
-        setPallette={setPallette}
+      <EditorHeader>ette</EditorHeader>
+      <p>Add new colors or reset to a palette</p>
+      <PaletteInput
+        setPalette={setPalette}
         colors={colors}
         addColor={addColor}
       />

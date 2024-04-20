@@ -1,7 +1,8 @@
+import { expect, test } from "bun:test";
 import { color, rgb } from "d3-color";
 import { colorSeparation } from "./sep";
 
-test("grey linear", () => {
+test("gray linear", () => {
   const colors = [rgb(0, 0, 0)];
   const {
     error,
@@ -80,6 +81,7 @@ test("cmy black", () => {
   expect(y).toBeCloseTo(1);
 });
 
+// eslint-disable-next-line spellcheck/spell-checker
 test("underconstrained linear", () => {
   const colors = ["#00ffff", "#ff00ff", "#ffff00", "#000000"].map(
     (c) => color(c)!,
@@ -88,6 +90,7 @@ test("underconstrained linear", () => {
   expect(error).toBeLessThan(1e-3);
 });
 
+// eslint-disable-next-line spellcheck/spell-checker
 test("underconstrained linear black", () => {
   const colors = ["#00ffff", "#ff00ff", "#ffff00", "#000000"].map(
     (c) => color(c)!,
