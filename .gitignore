@@ -5,3 +5,4 @@ coverage
 cache
 .next
 .eslintcache
+out

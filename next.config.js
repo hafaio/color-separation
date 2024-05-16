@@ -7,5 +7,7 @@ export default {
   assetPrefix:
     process.env.NODE_ENV === "production" ? "/color-separation" : undefined,
   output: "export",
-  distDir: process.env.NODE_ENV === "production" ? "docs" : undefined,
+  images: {
+    unoptimized: true,
+  },
 };

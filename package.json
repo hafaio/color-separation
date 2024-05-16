@@ -10,7 +10,7 @@
     "fmt": "prettier --write --cache 'app/**/*.tsx' 'components/*.tsx' 'utils/*.ts' '*.{js,json}'",
     "lint": "tsc && eslint --cache 'app/**/*.tsx' 'components/*.tsx' 'utils/*.ts'",
     "dev": "next dev",
-    "export": "bun test --coverage && next build && touch docs/.nojekyll"
+    "export": "bun test --coverage && next build"
   },
   "devDependencies": {
     "@chakra-ui/icons": "^2.1.1",
