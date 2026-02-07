@@ -13,9 +13,14 @@
  *
  * @packageDocumentation
  */
+
+import type { ColorSpaceObject } from "d3-color";
 import * as d3color from "d3-color";
-import { ColorSpaceObject } from "d3-color";
-import { Constraint, Solve as solveLP, Variable } from "javascript-lp-solver";
+import {
+  type Constraint,
+  default as solver,
+  type Variable,
+} from "javascript-lp-solver";
 
 export interface Result {
   error: number;
@@ -23,7 +28,6 @@ export interface Result {
   opacities: number[];
 }
 
-// eslint-disable-next-line spellcheck/spell-checker
 /**
  * Perform approximate subtractive color separation
  *
@@ -91,16 +95,13 @@ export function colorSeparation(
     }
   }
 
-  const { result, feasible, bounded, ...vals } = solveLP.call(
-    {},
-    {
-      optimize: "error",
-      opType: "min",
-      constraints,
-      variables,
-      ints,
-    },
-  );
+  const { result, feasible, bounded, ...vals } = solver.Solve({
+    optimize: "error",
+    opType: "min",
+    constraints,
+    variables,
+    ints,
+  });
   /* istanbul ignore if */
   if (!feasible || !bounded) {
     throw new Error("couldn't find bounded feasible solution");

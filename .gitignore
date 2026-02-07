@@ -6,3 +6,4 @@ cache
 .next
 .eslintcache
 out
+*.un~

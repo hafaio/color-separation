@@ -1,6 +1,6 @@
-import { Metadata } from "next";
-import { ReactElement, ReactNode } from "react";
-import "../styles/global.css";
+import type { Metadata } from "next";
+import type { ReactElement, ReactNode } from "react";
+import "./global.css";
 
 export const metadata: Metadata = {
   title: "Spot Color Separation",
@@ -13,7 +13,9 @@ export default function RootLayout({
 }): ReactElement {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+        {children}
+      </body>
     </html>
   );
 }

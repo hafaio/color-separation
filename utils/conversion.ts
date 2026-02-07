@@ -5,9 +5,12 @@ export async function url2blob(url: string): Promise<Blob> {
 
 export function blob2url(blob: Blob): Promise<string> {
   const reader = new FileReader();
-  return new Promise<string>((resolve) => {
+  return new Promise<string>((resolve, reject) => {
     reader.addEventListener("load", () => {
       resolve(reader.result as string);
+    });
+    reader.addEventListener("error", () => {
+      reject(reader.error);
     });
     reader.readAsDataURL(blob);
   });

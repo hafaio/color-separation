@@ -1,14 +1,7 @@
+import { Tooltip } from "@ark-ui/react/tooltip";
 import {
-  Button,
-  Input,
-  InputGroup,
-  InputRightAddon,
-  Select,
-  Tooltip,
-} from "@chakra-ui/react";
-import {
-  ChangeEvent,
-  ReactElement,
+  type ChangeEvent,
+  type ReactElement,
   useCallback,
   useEffect,
   useState,
@@ -38,7 +31,7 @@ export default function PaletteInput({
   setPalette,
   addColor,
 }: {
-  colors: Map<string, unknown>;
+  colors: Map<string, [string, boolean]>;
   setPalette: (colors: readonly (readonly [string, string])[]) => void;
   addColor: (color: string, name: string) => void;
 }): ReactElement {
@@ -58,19 +51,13 @@ export default function PaletteInput({
   }, [setPalette]);
 
   const [name, setName] = useState("");
-  const inputChange = useCallback(
-    (evt: ChangeEvent<HTMLInputElement>) => {
-      setName(evt.target.value);
-    },
-    [setName],
-  );
+  const inputChange = useCallback((evt: ChangeEvent<HTMLInputElement>) => {
+    setName(evt.target.value);
+  }, []);
   const [color, setColor] = useState("#000000");
-  const colorChange = useCallback(
-    (evt: ChangeEvent<HTMLInputElement>) => {
-      setColor(evt.target.value);
-    },
-    [setColor],
-  );
+  const colorChange = useCallback((evt: ChangeEvent<HTMLInputElement>) => {
+    setColor(evt.target.value);
+  }, []);
 
   const addClick = useCallback(() => {
     addColor(color, name);
@@ -85,31 +72,51 @@ export default function PaletteInput({
 
   return (
     <>
-      <InputGroup>
-        <Input placeholder="Color Name" value={name} onChange={inputChange} />
-        <Input
+      <div className="flex">
+        <input
+          className="flex-1 min-w-0 px-2 py-1 border border-slate-300 dark:border-slate-600 rounded-l bg-white dark:bg-slate-800 dark:text-slate-100"
+          placeholder="Color Name"
+          value={name}
+          onChange={inputChange}
+        />
+        <input
           type="color"
-          style={{ borderRadius: 0, borderLeft: 0, width: "8rem" }}
+          className="w-16 h-full border border-l-0 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800"
           value={color}
           onChange={colorChange}
         />
-        <InputRightAddon style={{ padding: 0 }}>
-          <Tooltip label={message}>
-            <Button
-              style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
-              isDisabled={!valid}
+        <Tooltip.Root>
+          <Tooltip.Trigger asChild>
+            <button
+              className="px-3 py-1 bg-slate-300 hover:bg-slate-400 text-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 dark:text-white rounded-r disabled:opacity-50 disabled:pointer-events-none"
+              disabled={!valid}
               onClick={addClick}
+              type="button"
             >
               Add
-            </Button>
-          </Tooltip>
-        </InputRightAddon>
-      </InputGroup>
-      <Select placeholder="Select Palette" onChange={paletteChange}>
+            </button>
+          </Tooltip.Trigger>
+          {message && (
+            <Tooltip.Positioner>
+              <Tooltip.Content className="bg-slate-800 dark:bg-slate-700 text-white text-sm px-2 py-1 rounded shadow">
+                {message}
+              </Tooltip.Content>
+            </Tooltip.Positioner>
+          )}
+        </Tooltip.Root>
+      </div>
+      <select
+        className="w-full px-2 py-1 border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 dark:text-slate-100"
+        onChange={paletteChange}
+        defaultValue=""
+      >
+        <option value="" disabled>
+          Select Palette
+        </option>
         <option value="none">None</option>
         <option value="riso">Risograph</option>
         <option value="cmyk">CMYK</option>
-      </Select>
+      </select>
     </>
   );
 }

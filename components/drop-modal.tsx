@@ -1,5 +1,4 @@
-import { useColorModeValue } from "@chakra-ui/react";
-import { ReactElement } from "react";
+import type { ReactElement } from "react";
 
 export default function DropModal({ show }: { show: boolean }): ReactElement {
   return (
@@ -8,14 +7,11 @@ export default function DropModal({ show }: { show: boolean }): ReactElement {
         show ? "block" : "hidden"
       }`}
     >
-      <div
-        className={`w-96 p-4 space-y-2 rounded-md shadow-md ${useColorModeValue(
-          "bg-white",
-          "bg-gray-900",
-        )}`}
-      >
+      <div className="w-96 p-4 space-y-2 rounded-md shadow-md dark:shadow-slate-800/50 bg-white dark:bg-slate-900">
         <h1 className="font-bold text-lg">Drag & Drop an SVG to Upload</h1>
-        <p>Drop a compatible SVG anywhere to begin separating its colors.</p>
+        <p className="text-slate-600 dark:text-slate-400">
+          Drop a compatible SVG anywhere to begin separating its colors.
+        </p>
       </div>
     </div>
   );

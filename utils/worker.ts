@@ -1,6 +1,6 @@
 import * as d3color from "d3-color";
 import { colorSeparation } from "./sep";
-import { Message, Result } from "./winterface";
+import type { Message, Result } from "./winterface";
 
 addEventListener("message", (event: MessageEvent<Message>) => {
   try {
