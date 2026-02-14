@@ -1,12 +1,6 @@
-import {
-  Button,
-  Slider,
-  SliderFilledTrack,
-  SliderThumb,
-  SliderTrack,
-  Tooltip,
-} from "@chakra-ui/react";
-import { PropsWithChildren, ReactElement, useCallback } from "react";
+import { Slider } from "@ark-ui/react/slider";
+import { Tooltip } from "@ark-ui/react/tooltip";
+import { type PropsWithChildren, type ReactElement, useCallback } from "react";
 import { FaFileDownload } from "react-icons/fa";
 import ColorPicker from "./color-picker";
 import PaletteInput from "./palette-input";
@@ -70,58 +64,77 @@ export default function Editor({
   const selected = [...colors.values()].some(([, active]) => active);
   return (
     <>
-      <Button
-        className="w-full"
-        isDisabled={!selected}
+      <button
+        className="w-full px-4 py-2 bg-slate-300 hover:bg-slate-400 text-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 dark:text-white rounded disabled:opacity-50 disabled:pointer-events-none"
+        disabled={!selected}
         onMouseDown={onDown}
         onMouseUp={onUp}
+        type="button"
       >
         Toggle Original
-      </Button>
-      <Tooltip label={exportText}>
-        <Button
-          className="w-full"
-          isDisabled={!selected}
-          onClick={download}
-          leftIcon={<FaFileDownload />}
-          isLoading={isDownloading}
-        >
-          Export Separation
-        </Button>
-      </Tooltip>
+      </button>
+      <Tooltip.Root>
+        <Tooltip.Trigger asChild>
+          <button
+            className="w-full px-4 py-2 bg-slate-300 hover:bg-slate-400 text-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 dark:text-white rounded disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2"
+            disabled={!selected || isDownloading}
+            onClick={download}
+            type="button"
+          >
+            <FaFileDownload />
+            {isDownloading ? "Exporting..." : "Export Separation"}
+          </button>
+        </Tooltip.Trigger>
+        {exportText && (
+          <Tooltip.Positioner>
+            <Tooltip.Content className="bg-slate-800 dark:bg-slate-700 text-white text-sm px-2 py-1 rounded shadow">
+              {exportText}
+            </Tooltip.Content>
+          </Tooltip.Positioner>
+        )}
+      </Tooltip.Root>
       <EditorHeader>Colors</EditorHeader>
-      <p>Click a color to toggle its use in the separation</p>
+      <p className="text-slate-600 dark:text-slate-400">
+        Click a color to toggle its use in the separation
+      </p>
       <ColorPicker
         colors={colors}
         toggleColor={toggleColor}
         disabled={rendering}
       />
-      <EditorHeader>ette</EditorHeader>
-      <p>Add new colors or reset to a palette</p>
+      <EditorHeader>Palette</EditorHeader>
+      <p className="text-slate-600 dark:text-slate-400">
+        Add new colors or reset to a palette
+      </p>
       <PaletteInput
         setPalette={setPalette}
         colors={colors}
         addColor={addColor}
       />
-      <EditorHeader>Dicretizations</EditorHeader>
-      <p>
-        Drag the slider to change the number of dicrete opacities, this produces
-        a more posterized appearance.
+      <EditorHeader>Discretizations</EditorHeader>
+      <p className="text-slate-600 dark:text-slate-400">
+        Drag the slider to change the number of discrete opacities, this
+        produces a more posterized appearance.
       </p>
       <div className="px-4">
-        <Slider
-          defaultValue={increments}
-          onChangeEnd={setIncrements}
+        <Slider.Root
+          defaultValue={[increments]}
+          onValueChangeEnd={(details) => setIncrements(details.value[0])}
           min={0}
           max={7}
           step={1}
-          isDisabled={rendering}
+          disabled={rendering}
         >
-          <SliderTrack>
-            <SliderFilledTrack />
-          </SliderTrack>
-          <SliderThumb />
-        </Slider>
+          <Slider.Control className="relative flex items-center h-5">
+            <Slider.Track className="relative h-2 w-full rounded bg-slate-300 dark:bg-slate-600">
+              <Slider.Range className="absolute h-full rounded bg-slate-400 dark:bg-slate-500" />
+            </Slider.Track>
+            <Slider.Thumb
+              index={0}
+              className="absolute w-5 h-5 bg-white dark:bg-slate-200 border-2 border-slate-400 dark:border-slate-400 rounded-full shadow cursor-pointer -translate-x-1/2"
+            />
+          </Slider.Control>
+        </Slider.Root>
       </div>
     </>
   );

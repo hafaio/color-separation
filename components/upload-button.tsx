@@ -1,5 +1,4 @@
-import { Button } from "@chakra-ui/react";
-import { ChangeEvent, ReactElement, useRef } from "react";
+import { type ChangeEvent, type ReactElement, useRef } from "react";
 import { FaFileUpload } from "react-icons/fa";
 
 export default function UploadButton({
@@ -29,14 +28,15 @@ export default function UploadButton({
         onChange={onChange}
         className="hidden"
       />
-      <Button
-        className="w-full"
-        isLoading={loading}
+      <button
+        className="w-full px-4 py-2 bg-slate-300 hover:bg-slate-400 text-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 dark:text-white rounded disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2"
+        disabled={loading}
         onClick={click}
-        leftIcon={<FaFileUpload />}
+        type="button"
       >
-        Upload
-      </Button>
+        <FaFileUpload />
+        {loading ? "Loading..." : "Upload"}
+      </button>
     </div>
   );
 }

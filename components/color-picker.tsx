@@ -1,4 +1,4 @@
-import { ReactElement } from "react";
+import type { ReactElement } from "react";
 import ColorButton from "./color-button";
 
 export default function ColorPicker({

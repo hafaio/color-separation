@@ -45,5 +45,7 @@ declare module "javascript-lp-solver" {
   export type Result = BaseResult & Record<string, number>;
 
   /** function to solve an LP */
-  export function Solve(args: Model): Result;
+  function Solve(args: Model): Result;
+
+  export default { Solve };
 }

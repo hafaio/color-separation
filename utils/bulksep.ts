@@ -1,6 +1,6 @@
+import type { ColorSpaceObject } from "d3-color";
 import * as d3color from "d3-color";
-import { ColorSpaceObject } from "d3-color";
-import { Result } from "./winterface";
+import type { Result } from "./winterface";
 
 export async function* bulkColorSeparation(
   colorIter: AsyncIterable<ColorSpaceObject>,
@@ -22,6 +22,7 @@ export async function* bulkColorSeparation(
   const res = await new Promise<Result>((resolve) => {
     worker.addEventListener("message", (event: MessageEvent<Result>) => {
       resolve(event.data);
+      worker.terminate();
     });
     worker.postMessage(message, {
       transfer: [transPool.buffer as ArrayBuffer],

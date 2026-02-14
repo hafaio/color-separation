@@ -1,26 +1,30 @@
 "use client";
 
-import { useToast } from "@chakra-ui/react";
+import { createToaster, Toaster, type ToastOptions } from "@ark-ui/react/toast";
 import * as d3color from "d3-color";
 import { saveAs } from "file-saver";
 import { extension } from "mime-types";
+import Image from "next/image";
 import {
-  ReactElement,
+  type ReactElement,
   useCallback,
   useEffect,
   useReducer,
   useRef,
   useState,
 } from "react";
-import { FileRejection, useDropzone } from "react-dropzone";
+import { type FileRejection, useDropzone } from "react-dropzone";
 import { blob2url, resizeBlob, url2blob } from "../utils/conversion";
 import { genPreview, genSeparation } from "../utils/separate";
 import DropModal from "./drop-modal";
-import Editor, { Action } from "./editor";
+import Editor, { type Action } from "./editor";
 import Footer from "./footer";
 import HelpText from "./help-text";
-import Theme from "./theme";
 import UploadButton from "./upload-button";
+
+const toaster = createToaster({
+  placement: "bottom-start",
+});
 
 interface Parsed {
   raw: File;
@@ -34,8 +38,7 @@ export default function App(): ReactElement {
   const [isDownloading, setDownloading] = useState(false);
   const toggleHelp = useCallback(() => {
     setShowHelp(!showHelp);
-  }, [showHelp, setShowHelp]);
-  const toast = useToast();
+  }, [showHelp]);
   const imgBox = useRef(null);
 
   const [parsed, setParsed] = useState<Parsed | undefined | null>();
@@ -90,17 +93,16 @@ export default function App(): ReactElement {
         } catch (ex) {
           console.error(ex);
           setPreview(undefined);
-          toast({
+          toaster.create({
             title: "Couldn't separate image",
-            status: "error",
-            position: "bottom-left",
+            type: "error",
           });
         } finally {
           setRendering(false);
         }
       })();
     }
-  }, [colors, increments, parsed, setPreview, toast]);
+  }, [colors, increments, parsed]);
 
   const download = useCallback(() => {
     if (parsed) {
@@ -124,47 +126,42 @@ export default function App(): ReactElement {
           for (const [ind, name] of names.entries()) {
             const blob = blobs[ind];
             const ext = extension(blob.type);
-            saveAs(blob, `${baseName}_${name.replace(" ", "_")}.${ext}`);
+            saveAs(blob, `${baseName}_${name.replaceAll(" ", "_")}.${ext}`);
           }
         } catch (ex) {
           console.error(ex);
-          toast({
+          toaster.create({
             title: "Couldn't separate image",
-            status: "error",
-            position: "bottom-left",
+            type: "error",
           });
         } finally {
           setDownloading(false);
         }
       })();
     }
-  }, [parsed, colors, toast, increments]);
+  }, [parsed, colors, increments]);
 
-  const onUpload = useCallback(
-    (file: File) => {
-      void (async () => {
-        try {
-          setParsed(null);
-          setShowHelp(false);
-          modifyColors({ action: "clear" });
+  const onUpload = useCallback((file: File) => {
+    void (async () => {
+      try {
+        setParsed(null);
+        setShowHelp(false);
+        modifyColors({ action: "clear" });
 
-          const { clientWidth, clientHeight } = imgBox.current!;
-          const blob = await resizeBlob(file, clientWidth, clientHeight);
-          const prev = await blob2url(blob);
-          setParsed({ raw: file, preview: prev });
-        } catch (ex) {
-          console.error(ex);
-          toast({
-            title: "Couldn't load file",
-            status: "error",
-            position: "bottom-left",
-          });
-          setParsed(undefined);
-        }
-      })();
-    },
-    [setParsed, setShowHelp, toast],
-  );
+        const { clientWidth, clientHeight } = imgBox.current!;
+        const blob = await resizeBlob(file, clientWidth, clientHeight);
+        const prev = await blob2url(blob);
+        setParsed({ raw: file, preview: prev });
+      } catch (ex) {
+        console.error(ex);
+        toaster.create({
+          title: "Couldn't load file",
+          type: "error",
+        });
+        setParsed(undefined);
+      }
+    })();
+  }, []);
 
   const editor =
     parsed && !showHelp ? (
@@ -181,31 +178,31 @@ export default function App(): ReactElement {
     ) : (
       <HelpText closeable={!!parsed} />
     );
-  const src = showRaw ? parsed?.preview : preview ?? parsed?.preview;
+  const src = showRaw ? parsed?.preview : (preview ?? parsed?.preview);
   const img = src ? (
-    <img
+    <Image
       src={src}
       alt="rendered separation"
       className="h-full w-full object-contain"
+      width="1"
+      height="1"
     />
   ) : null;
 
   const onDrop = useCallback(
     (accepted: File[], rejected: FileRejection[]) => {
       const [file] = accepted;
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (file) {
         onUpload(file);
       }
       if (rejected.length) {
-        toast({
+        toaster.create({
           title: "Dropped file was not an SVG, PNG, or JPEG",
-          status: "error",
-          position: "bottom-left",
+          type: "error",
         });
       }
     },
-    [onUpload, toast],
+    [onUpload],
   );
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -219,7 +216,7 @@ export default function App(): ReactElement {
   });
 
   return (
-    <Theme>
+    <>
       <div
         {...getRootProps({
           className: "h-screen w-screen flex flex-row",
@@ -227,7 +224,7 @@ export default function App(): ReactElement {
       >
         <input {...getInputProps()} />
         <DropModal show={isDragActive} />
-        <div className="w-72 h-full p-2 overflow-y-auto flex flex-col flex-shrink-0 justify-between">
+        <div className="w-72 h-full p-2 overflow-y-auto flex flex-col flex-shrink-0 justify-between bg-slate-50 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700">
           <div className="space-y-2 flex-grow flex flex-col">
             <h1 className="font-bold text-xl text-center">
               Spot Color Separator
@@ -241,6 +238,13 @@ export default function App(): ReactElement {
           {img}
         </div>
       </div>
-    </Theme>
+      <Toaster toaster={toaster}>
+        {(toast: ToastOptions) => (
+          <div className="bg-red-100 text-red-900 border border-red-300 dark:bg-red-900 dark:text-red-100 dark:border-red-700 px-4 py-3 rounded shadow-lg">
+            <p className="font-medium">{toast.title}</p>
+          </div>
+        )}
+      </Toaster>
+    </>
   );
 }
