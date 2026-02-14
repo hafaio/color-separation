@@ -32,8 +32,8 @@ jobs:
         uses: oven-sh/setup-bun@v1
       - name: Install Deps
         run: bun install
-      - name: Check format
-        run: bun fmt --check
+      - name: Check lint
+        run: bun lint
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Restore cache
