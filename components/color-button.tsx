@@ -10,7 +10,7 @@ export default function ColorButton({
   palette,
   toggleColor,
   remapColor,
-  disabled = false,
+  muted = false,
 }: {
   color: string;
   name: string;
@@ -19,7 +19,7 @@ export default function ColorButton({
   palette: readonly (readonly [string, string])[];
   toggleColor: (named: string) => void;
   remapColor: (color: string, remap: string) => void;
-  disabled?: boolean;
+  muted?: boolean;
 }): ReactElement {
   const toggle = useCallback(() => {
     toggleColor(color);
@@ -30,18 +30,16 @@ export default function ColorButton({
     },
     [color, remapColor],
   );
-  const sty = disabled ? "" : "hover:scale-110";
-  const ringColor = disabled ? "#cbd5e1" : color;
   const fillColor = active && remap ? remap : "transparent";
-  const buttonClass = `rounded-full transition-all m-1 focus:outline w-8 h-8 ${sty}`;
+  const buttonClass = `rounded-full transition-all m-1 focus:outline w-8 h-8 hover:scale-110 ${muted ? "opacity-50" : ""}`;
   const buttonStyle = {
     borderWidth: active ? "0.2rem" : "1rem",
-    borderColor: ringColor,
-    outlineColor: ringColor,
+    borderColor: color,
+    outlineColor: color,
     backgroundColor: fillColor,
   };
 
-  if (!active || disabled) {
+  if (!active) {
     return (
       <Tooltip.Root>
         <Tooltip.Trigger asChild>
@@ -49,7 +47,6 @@ export default function ColorButton({
             className={buttonClass}
             style={buttonStyle}
             onClick={toggle}
-            disabled={disabled}
             type="button"
           />
         </Tooltip.Trigger>
