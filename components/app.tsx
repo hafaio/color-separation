@@ -101,12 +101,10 @@ export default function App(): ReactElement {
     }
     const pool = [];
     const renderPool = [];
-    const names = [];
-    for (const [color, [name, active, remap]] of colors) {
+    for (const [color, [, active, remap]] of colors) {
       if (active) {
         pool.push(d3color.color(color)!);
         renderPool.push(d3color.color(remap ?? color)!);
-        names.push(name);
       }
     }
     if (!pool.length) {
@@ -127,7 +125,7 @@ export default function App(): ReactElement {
             increments,
             lambda,
           );
-        const gridBlob = await genGrid(separations, names, renderPool);
+        const gridBlob = await genGrid(separations, renderPool);
         const [previewUrl, gridUrl] = await Promise.all([
           blob2url(previewBlob),
           blob2url(gridBlob),
