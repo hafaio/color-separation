@@ -91,6 +91,7 @@ export default function App(): ReactElement {
   const [preview, setPreview] = useState<string | undefined>();
   const [grid, setGrid] = useState<string | undefined>();
   const [increments, setIncrements] = useState(0);
+  const [lambda, setLambda] = useState(0);
 
   useEffect(() => {
     if (!parsed) {
@@ -119,7 +120,13 @@ export default function App(): ReactElement {
         setRendering(true);
         const blob = await url2blob(parsed.preview);
         const { preview: previewBlob, separations } =
-          await genPreviewAndSeparation(blob, pool, renderPool, increments);
+          await genPreviewAndSeparation(
+            blob,
+            pool,
+            renderPool,
+            increments,
+            lambda,
+          );
         const gridBlob = await genGrid(separations, names, renderPool);
         const [previewUrl, gridUrl] = await Promise.all([
           blob2url(previewBlob),
@@ -148,7 +155,7 @@ export default function App(): ReactElement {
     return () => {
       cancelled = true;
     };
-  }, [colors, increments, parsed]);
+  }, [colors, increments, parsed, lambda]);
 
   const download = useCallback(() => {
     if (parsed) {
@@ -168,7 +175,12 @@ export default function App(): ReactElement {
             }
           }
 
-          const blobs = await genSeparation(parsed.raw, pool, increments);
+          const blobs = await genSeparation(
+            parsed.raw,
+            pool,
+            increments,
+            lambda,
+          );
           for (const [ind, name] of names.entries()) {
             const blob = blobs[ind];
             const ext = extension(blob.type);
@@ -185,7 +197,7 @@ export default function App(): ReactElement {
         }
       })();
     }
-  }, [parsed, colors, increments]);
+  }, [parsed, colors, increments, lambda]);
 
   const onUpload = useCallback((file: File) => {
     void (async () => {
@@ -216,6 +228,8 @@ export default function App(): ReactElement {
         modifyColors={modifyColors}
         increments={increments}
         setIncrements={setIncrements}
+        lambda={lambda}
+        setLambda={setLambda}
         download={download}
         isDownloading={isDownloading}
         setShowRaw={setShowRaw}

@@ -5,6 +5,7 @@ export interface Message {
   readonly pool: Uint32Array;
   readonly renderPool: Uint32Array;
   readonly increments: number;
+  readonly lambda: number;
 }
 
 interface Err {
@@ -25,6 +26,7 @@ export interface RasterMessage {
   readonly pool: Uint32Array;
   readonly renderPool: Uint32Array;
   readonly increments: number;
+  readonly lambda: number;
   readonly outputType: string;
 }
 
