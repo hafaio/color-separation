@@ -1,122 +1,117 @@
+import { Dialog } from "@ark-ui/react/dialog";
 import { Tooltip } from "@ark-ui/react/tooltip";
-import {
-  type ChangeEvent,
-  type ReactElement,
-  useCallback,
-  useEffect,
-  useState,
-} from "react";
+import { type ReactElement, useCallback, useMemo } from "react";
+import { type RgbU32, rgbToCss } from "../utils/color";
+import { INKS_BY_RGB, type Ink } from "../utils/inks";
+import type { ColorState } from "../utils/types";
 
-// more riso colors: https://www.stencil.wiki/colors
-const risoPalette = [
-  ["#f15060", "bright red"],
-  ["#ff48b0", "fluorescent pink"],
-  ["#ffe800", "yellow"],
-  ["#00a95c", "green"],
-  ["#0078bf", "blue"],
-  ["#000000", "black"],
-] as const;
+// INKS_BY_RGB is module-constant, so the displayed swatch list never changes.
+const INK_LIST: readonly Ink[] = [...INKS_BY_RGB.values()];
 
-const cmykPalette = [
-  ["#00ffff", "cyan"],
-  ["#ff00ff", "magenta"],
-  ["#ffff00", "yellow"],
-  ["#000000", "black"],
-] as const;
-
-// FIXME think about this interface more, maybe just have a + icon for adding a
-// color and a clear? And maybe just have presets as well?
 export default function PaletteInput({
   colors,
-  setPalette,
   addColor,
+  removeColor,
 }: {
-  colors: Map<string, [string, boolean, string | undefined]>;
-  setPalette: (colors: readonly (readonly [string, string])[]) => void;
-  addColor: (color: string, name: string) => void;
+  colors: Map<RgbU32, ColorState>;
+  addColor: (color: RgbU32, name: string) => void;
+  removeColor: (color: RgbU32) => void;
 }): ReactElement {
-  const paletteChange = (evt: ChangeEvent<HTMLSelectElement>) => {
-    const val = evt.target.value;
-    if (val === "none") {
-      setPalette([]);
-    } else if (val === "riso") {
-      setPalette(risoPalette);
-    } else if (val === "cmyk") {
-      setPalette(cmykPalette);
-    }
-  };
-  // default palette
-  useEffect(() => {
-    setPalette(risoPalette);
-  }, [setPalette]);
+  const toggleInk = useCallback(
+    (ink: Ink) => {
+      if (colors.has(ink.rgb)) {
+        removeColor(ink.rgb);
+      } else {
+        addColor(ink.rgb, ink.name);
+      }
+    },
+    [colors, addColor, removeColor],
+  );
 
-  const [name, setName] = useState("");
-  const inputChange = useCallback((evt: ChangeEvent<HTMLInputElement>) => {
-    setName(evt.target.value);
-  }, []);
-  const [color, setColor] = useState("#000000");
-  const colorChange = useCallback((evt: ChangeEvent<HTMLInputElement>) => {
-    setColor(evt.target.value);
-  }, []);
-
-  const addClick = useCallback(() => {
-    addColor(color, name);
-  }, [color, name, addColor]);
-
-  const valid = name && !colors.has(color);
-  const message = !name
-    ? "must name added colors"
-    : colors.has(color)
-      ? "can only add unique colors"
-      : undefined;
+  const selectedCount = useMemo(
+    () => INK_LIST.reduce((n, ink) => n + (colors.has(ink.rgb) ? 1 : 0), 0),
+    [colors],
+  );
 
   return (
-    <>
-      <div className="flex">
-        <input
-          className="flex-1 min-w-0 px-2 py-1 border border-slate-300 dark:border-slate-600 rounded-l bg-white dark:bg-slate-800 dark:text-slate-100"
-          placeholder="Color Name"
-          value={name}
-          onChange={inputChange}
-        />
-        <input
-          type="color"
-          className="w-16 h-full border border-l-0 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800"
-          value={color}
-          onChange={colorChange}
-        />
-        <Tooltip.Root>
-          <Tooltip.Trigger asChild>
-            <button
-              className="px-3 py-1 bg-slate-300 hover:bg-slate-400 text-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 dark:text-white rounded-r disabled:opacity-50 disabled:pointer-events-none"
-              disabled={!valid}
-              onClick={addClick}
-              type="button"
-            >
-              Add
-            </button>
-          </Tooltip.Trigger>
-          {message && (
-            <Tooltip.Positioner>
-              <Tooltip.Content className="bg-slate-800 dark:bg-slate-700 text-white text-sm px-2 py-1 rounded shadow">
-                {message}
-              </Tooltip.Content>
-            </Tooltip.Positioner>
-          )}
-        </Tooltip.Root>
-      </div>
-      <select
-        className="w-full px-2 py-1 border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 dark:text-slate-100"
-        onChange={paletteChange}
-        defaultValue=""
-      >
-        <option value="" disabled>
-          Select Palette
-        </option>
-        <option value="none">None</option>
-        <option value="riso">Risograph</option>
-        <option value="cmyk">CMYK</option>
-      </select>
-    </>
+    <Dialog.Root>
+      <Dialog.Trigger asChild>
+        <button
+          type="button"
+          className="w-full px-4 py-2 bg-slate-300 hover:bg-slate-400 text-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 dark:text-white rounded"
+        >
+          Edit Palette ({selectedCount} / {INK_LIST.length})
+        </button>
+      </Dialog.Trigger>
+      <Dialog.Backdrop className="fixed inset-0 bg-black/50 z-40" />
+      <Dialog.Positioner className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <Dialog.Content className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-auto p-6 [--palette-bg:white] dark:[--palette-bg:rgb(30_41_59)]">
+          <Dialog.Title className="text-xl font-bold mb-1">
+            Palette
+          </Dialog.Title>
+          <Dialog.Description className="text-slate-600 dark:text-slate-400 mb-4">
+            Click an ink to add or remove it from your palette.
+          </Dialog.Description>
+          <div
+            className="grid gap-3 mb-4"
+            style={{
+              gridTemplateColumns: "repeat(auto-fill, minmax(2.75rem, 1fr))",
+            }}
+          >
+            {INK_LIST.map((ink) => {
+              const selected = colors.has(ink.rgb);
+              const css = rgbToCss(ink.rgb);
+              return (
+                <Tooltip.Root key={ink.id}>
+                  <Tooltip.Trigger asChild>
+                    <button
+                      type="button"
+                      aria-pressed={selected}
+                      className="relative w-9 h-9 rounded-full transition-transform hover:scale-110 mx-auto"
+                      style={{
+                        backgroundColor: css,
+                        boxShadow: selected
+                          ? `0 0 0 2px var(--palette-bg), 0 0 0 4px ${css}`
+                          : "inset 0 0 0 1px rgba(0,0,0,0.15)",
+                      }}
+                      onClick={() => toggleInk(ink)}
+                    >
+                      {!ink.kmEligible && (
+                        // Indicator that KM mode is unavailable for this ink.
+                        <span
+                          className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                          aria-hidden
+                        >
+                          <span
+                            className="w-1.5 h-1.5 rounded-full bg-white"
+                            style={{ mixBlendMode: "difference" }}
+                          />
+                        </span>
+                      )}
+                    </button>
+                  </Tooltip.Trigger>
+                  <Tooltip.Positioner>
+                    <Tooltip.Content className="bg-slate-800 dark:bg-slate-700 text-white text-sm px-2 py-1 rounded shadow z-50">
+                      {ink.name}
+                      {!ink.kmEligible && " · no K-M calibration"}
+                    </Tooltip.Content>
+                  </Tooltip.Positioner>
+                </Tooltip.Root>
+              );
+            })}
+          </div>
+          <div className="flex justify-end">
+            <Dialog.CloseTrigger asChild>
+              <button
+                type="button"
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-white rounded"
+              >
+                Close
+              </button>
+            </Dialog.CloseTrigger>
+          </div>
+        </Dialog.Content>
+      </Dialog.Positioner>
+    </Dialog.Root>
   );
 }

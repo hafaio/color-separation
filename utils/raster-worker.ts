@@ -1,7 +1,10 @@
-import * as d3color from "d3-color";
-import { packRgb, type RgbU32, unpackRgb } from "./color";
-import { colorSeparation, composeColors } from "./sep";
-import type { RasterMessage, RasterResult } from "./winterface";
+import { packRgb, type RgbU32 } from "./color";
+import { buildSolverContext, solveColors } from "./solver-context";
+import {
+  type RasterMessage,
+  type RasterResult,
+  SOLVER_FRACTION,
+} from "./winterface";
 
 addEventListener("message", (event: MessageEvent<RasterMessage>) => {
   void run(event.data);
@@ -9,7 +12,16 @@ addEventListener("message", (event: MessageEvent<RasterMessage>) => {
 
 async function run(message: RasterMessage): Promise<void> {
   try {
-    const { blob, pool, renderPool, increments, lambda, outputType } = message;
+    const {
+      blob,
+      pool,
+      renderPool,
+      mixingMode,
+      autoOrder,
+      increments,
+      lambda,
+      outputType,
+    } = message;
     const numChannels = pool.length;
     const numOutputs = 1 + numChannels;
 
@@ -22,45 +34,59 @@ async function run(message: RasterMessage): Promise<void> {
       colorSpace: "srgb",
     }).data;
 
-    const unique = new Set<RgbU32>();
+    // Pixel-frequency-weighted unique colors drive auto-ordering racing.
+    const counts = new Map<RgbU32, number>();
     for (let i = 0; i < srcData.length; i += 4) {
-      unique.add(packRgb(srcData[i], srcData[i + 1], srcData[i + 2]));
+      const key = packRgb(srcData[i], srcData[i + 1], srcData[i + 2]);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
     }
 
-    const colorPool: d3color.RGBColor[] = [];
-    const renderColors: d3color.RGBColor[] = [];
-    for (let i = 0; i < pool.length; i++) {
-      const { r, g, b } = unpackRgb(pool[i]);
-      colorPool.push(d3color.rgb(r, g, b));
-      const { r: rr, g: rg, b: rb } = unpackRgb(renderPool[i]);
-      renderColors.push(d3color.rgb(rr, rg, rb));
-    }
+    const ctx = buildSolverContext(
+      pool,
+      renderPool,
+      mixingMode,
+      autoOrder,
+      counts,
+      increments,
+      lambda,
+    );
 
+    const total = counts.size;
+    const n = ctx.poolColors.length;
+    const prevs = new Uint32Array(total);
+    const opacs = new Float64Array(total * n);
+    solveColors(
+      ctx,
+      counts.keys(),
+      total,
+      prevs,
+      opacs,
+      SOLVER_FRACTION,
+      (value) => postMessage({ typ: "progress", value }),
+    );
+
+    // Build per-unique-color packed bytes (preview RGB + per-channel grayscale
+    // triples) once so the per-pixel canvas-write loop is a pure memcpy.
     const triples = numOutputs * 3;
-    const lookup = new Map<RgbU32, Uint8Array>();
-    for (const key of unique) {
-      const { r, g, b } = unpackRgb(key);
-      const { opacities } = colorSeparation(d3color.rgb(r, g, b), colorPool, {
-        increments,
-        lambda,
-      });
-      const {
-        r: pr,
-        g: pg,
-        b: pb,
-      } = composeColors(opacities, renderColors).rgb();
+    const colorIndex = new Map<RgbU32, number>();
+    const colorBytes: Uint8Array[] = new Array(total);
+    let cIdx = 0;
+    for (const key of counts.keys()) {
       const bytes = new Uint8Array(triples);
-      bytes[0] = pr;
-      bytes[1] = pg;
-      bytes[2] = pb;
+      const prev = prevs[cIdx];
+      bytes[0] = (prev >> 16) & 0xff;
+      bytes[1] = (prev >> 8) & 0xff;
+      bytes[2] = prev & 0xff;
       for (let j = 0; j < numChannels; j++) {
-        const v = Math.round((1 - opacities[j]) * 255);
+        const v = Math.round((1 - opacs[cIdx * n + j]) * 255);
         const base = 3 + j * 3;
         bytes[base] = v;
         bytes[base + 1] = v;
         bytes[base + 2] = v;
       }
-      lookup.set(key, bytes);
+      colorBytes[cIdx] = bytes;
+      colorIndex.set(key, cIdx);
+      cIdx++;
     }
 
     const outCanvases: OffscreenCanvas[] = [];
@@ -68,16 +94,18 @@ async function run(message: RasterMessage): Promise<void> {
     const outDatas: ImageData[] = [];
     for (let j = 0; j < numOutputs; j++) {
       const canvas = new OffscreenCanvas(width, height);
-      const ctx = canvas.getContext("2d")!;
+      const ctx2d = canvas.getContext("2d")!;
       outCanvases.push(canvas);
-      outCtxs.push(ctx);
-      outDatas.push(ctx.createImageData(width, height, { colorSpace: "srgb" }));
+      outCtxs.push(ctx2d);
+      outDatas.push(
+        ctx2d.createImageData(width, height, { colorSpace: "srgb" }),
+      );
     }
 
     for (let i = 0; i < srcData.length; i += 4) {
       const key = packRgb(srcData[i], srcData[i + 1], srcData[i + 2]);
       const alpha = srcData[i + 3];
-      const bytes = lookup.get(key)!;
+      const bytes = colorBytes[colorIndex.get(key)!];
       for (let j = 0; j < numOutputs; j++) {
         const out = outDatas[j].data;
         const base = j * 3;
@@ -91,14 +119,31 @@ async function run(message: RasterMessage): Promise<void> {
     for (let j = 0; j < numOutputs; j++) {
       outCtxs[j].putImageData(outDatas[j], 0, 0);
     }
+    // Split the trailing budget: ~40% for pixel write, ~60% for per-channel
+    // blob encoding (the heavier phase).
+    const trailing = 1 - SOLVER_FRACTION;
+    const pixelEnd = SOLVER_FRACTION + trailing * 0.4;
+    const blobEnd = 1;
+    postMessage({ typ: "progress", value: pixelEnd });
+    // Encode all blobs in parallel — convertToBlob runs off the JS thread —
+    // and report progress as each individually resolves.
+    let done = 0;
+    const step = (blobEnd - pixelEnd) / outCanvases.length;
     const blobs = await Promise.all(
-      outCanvases.map((canvas) => canvas.convertToBlob({ type: outputType })),
+      outCanvases.map((canvas) =>
+        canvas.convertToBlob({ type: outputType }).then((blob) => {
+          done++;
+          postMessage({ typ: "progress", value: pixelEnd + step * done });
+          return blob;
+        }),
+      ),
     );
 
     const result: RasterResult = {
       typ: "success",
       preview: blobs[0],
       separations: blobs.slice(1),
+      chosenOrder: ctx.chosenOrder,
     };
     postMessage(result);
   } catch (ex) {
