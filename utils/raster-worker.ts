@@ -9,7 +9,7 @@ addEventListener("message", (event: MessageEvent<RasterMessage>) => {
 
 async function run(message: RasterMessage): Promise<void> {
   try {
-    const { blob, pool, renderPool, increments, outputType } = message;
+    const { blob, pool, renderPool, increments, lambda, outputType } = message;
     const numChannels = pool.length;
     const numOutputs = 1 + numChannels;
 
@@ -42,6 +42,7 @@ async function run(message: RasterMessage): Promise<void> {
       const { r, g, b } = unpackRgb(key);
       const { opacities } = colorSeparation(d3color.rgb(r, g, b), colorPool, {
         increments,
+        lambda,
       });
       const {
         r: pr,

@@ -21,6 +21,8 @@ export default function Editor({
   modifyColors,
   increments,
   setIncrements,
+  lambda,
+  setLambda,
   download,
   isDownloading,
   setShowRaw,
@@ -31,6 +33,8 @@ export default function Editor({
   modifyColors: (action: Action) => void;
   increments: number;
   setIncrements: (inc: number) => void;
+  lambda: number;
+  setLambda: (lambda: number) => void;
   download: () => void;
   isDownloading: boolean;
   setShowRaw: (val: boolean) => void;
@@ -148,7 +152,6 @@ export default function Editor({
           min={0}
           max={7}
           step={1}
-          disabled={rendering}
         >
           <Slider.Control className="relative flex items-center h-5">
             <Slider.Track className="relative h-2 w-full rounded bg-slate-300 dark:bg-slate-600">
@@ -156,7 +159,30 @@ export default function Editor({
             </Slider.Track>
             <Slider.Thumb
               index={0}
-              className="absolute w-5 h-5 bg-white dark:bg-slate-200 border-2 border-slate-400 dark:border-slate-400 rounded-full shadow cursor-pointer -translate-x-1/2"
+              className="absolute w-5 h-5 bg-white dark:bg-slate-200 border-2 border-slate-400 dark:border-slate-400 rounded-full shadow cursor-pointer"
+            />
+          </Slider.Control>
+        </Slider.Root>
+      </div>
+      <EditorHeader>Sparsity</EditorHeader>
+      <p className="text-slate-600 dark:text-slate-400">
+        Bias the separation toward fewer pool colors per output color.
+      </p>
+      <div className="px-4">
+        <Slider.Root
+          value={[lambda]}
+          onValueChange={(details) => setLambda(details.value[0])}
+          min={0}
+          max={1}
+          step={0.05}
+        >
+          <Slider.Control className="relative flex items-center h-5">
+            <Slider.Track className="relative h-2 w-full rounded bg-slate-300 dark:bg-slate-600">
+              <Slider.Range className="absolute h-full rounded bg-slate-400 dark:bg-slate-500" />
+            </Slider.Track>
+            <Slider.Thumb
+              index={0}
+              className="absolute w-5 h-5 bg-white dark:bg-slate-200 border-2 border-slate-400 dark:border-slate-400 rounded-full shadow cursor-pointer"
             />
           </Slider.Control>
         </Slider.Root>

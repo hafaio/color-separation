@@ -16,6 +16,7 @@ async function rasterPipeline(
   pool: readonly ColorSpaceObject[],
   renderPool: readonly ColorSpaceObject[],
   increments: number,
+  lambda: number,
 ): Promise<{ preview: Blob; separations: readonly Blob[] }> {
   const transPool = new Uint32Array(pool.length);
   const transRender = new Uint32Array(renderPool.length);
@@ -32,6 +33,7 @@ async function rasterPipeline(
     pool: transPool,
     renderPool: transRender,
     increments,
+    lambda,
     outputType: blob.type,
   };
   const worker = new Worker(new URL("./raster-worker.ts", import.meta.url));
@@ -226,6 +228,7 @@ export async function genPreview(
   pool: readonly ColorSpaceObject[],
   renderPool: readonly ColorSpaceObject[],
   increments: number,
+  lambda: number,
 ): Promise<Blob> {
   if (isRaster(blob.type)) {
     const { preview } = await rasterPipeline(
@@ -233,6 +236,7 @@ export async function genPreview(
       pool,
       renderPool,
       increments,
+      lambda,
     );
     return preview;
   }
@@ -242,6 +246,7 @@ export async function genPreview(
     pool,
     renderPool,
     increments,
+    lambda,
   )) {
     update.set(key, color);
   }
@@ -254,9 +259,10 @@ export async function genPreviewAndSeparation(
   pool: readonly ColorSpaceObject[],
   renderPool: readonly ColorSpaceObject[],
   increments: number,
+  lambda: number,
 ): Promise<{ preview: Blob; separations: readonly Blob[] }> {
   if (isRaster(blob.type)) {
-    return await rasterPipeline(blob, pool, renderPool, increments);
+    return await rasterPipeline(blob, pool, renderPool, increments, lambda);
   }
   const update = new Map<RgbU32, RgbU32>();
   const mapping = new Map<RgbU32, number[]>();
@@ -265,6 +271,7 @@ export async function genPreviewAndSeparation(
     pool,
     renderPool,
     increments,
+    lambda,
   )) {
     update.set(key, color);
     mapping.set(key, opac);
@@ -335,9 +342,16 @@ export async function genSeparation(
   blob: Blob,
   pool: readonly ColorSpaceObject[],
   increments: number,
+  lambda: number,
 ): Promise<readonly Blob[]> {
   if (isRaster(blob.type)) {
-    const { separations } = await rasterPipeline(blob, pool, pool, increments);
+    const { separations } = await rasterPipeline(
+      blob,
+      pool,
+      pool,
+      increments,
+      lambda,
+    );
     return separations;
   }
   const mapping = new Map<RgbU32, number[]>();
@@ -346,6 +360,7 @@ export async function genSeparation(
     pool,
     pool,
     increments,
+    lambda,
   )) {
     mapping.set(key, opac);
   }

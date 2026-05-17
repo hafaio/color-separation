@@ -7,6 +7,7 @@ export async function* bulkColorSeparation(
   pool: readonly ColorSpaceObject[],
   renderPool: readonly ColorSpaceObject[],
   increments: number,
+  lambda: number,
 ): AsyncIterableIterator<[RgbU32, RgbU32, number[]]> {
   const colors = new Set<RgbU32>();
   for await (const color of colorIter) {
@@ -28,6 +29,7 @@ export async function* bulkColorSeparation(
     pool: transPool,
     renderPool: transRender,
     increments,
+    lambda,
   };
   const worker = new Worker(new URL("./worker.ts", import.meta.url));
   const res = await new Promise<Result>((resolve) => {
