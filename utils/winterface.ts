@@ -3,6 +3,7 @@ import type { RgbU32 } from "./color";
 export interface Message {
   readonly colors: Set<RgbU32>;
   readonly pool: Uint32Array;
+  readonly renderPool: Uint32Array;
   readonly increments: number;
 }
 
@@ -22,6 +23,7 @@ export type Result = Err | Success;
 export interface RasterMessage {
   readonly blob: Blob;
   readonly pool: Uint32Array;
+  readonly renderPool: Uint32Array;
   readonly increments: number;
   readonly outputType: string;
 }

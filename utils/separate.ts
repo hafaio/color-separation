@@ -14,16 +14,23 @@ function isRaster(type: string): boolean {
 async function rasterPipeline(
   blob: Blob,
   pool: readonly ColorSpaceObject[],
+  renderPool: readonly ColorSpaceObject[],
   increments: number,
 ): Promise<{ preview: Blob; separations: readonly Blob[] }> {
   const transPool = new Uint32Array(pool.length);
+  const transRender = new Uint32Array(renderPool.length);
   for (const [i, color] of pool.entries()) {
     const { r, g, b } = color.rgb();
     transPool[i] = packRgb(r, g, b);
   }
+  for (const [i, color] of renderPool.entries()) {
+    const { r, g, b } = color.rgb();
+    transRender[i] = packRgb(r, g, b);
+  }
   const message: RasterMessage = {
     blob,
     pool: transPool,
+    renderPool: transRender,
     increments,
     outputType: blob.type,
   };
@@ -34,7 +41,10 @@ async function rasterPipeline(
       worker.terminate();
     });
     worker.postMessage(message, {
-      transfer: [transPool.buffer as ArrayBuffer],
+      transfer: [
+        transPool.buffer as ArrayBuffer,
+        transRender.buffer as ArrayBuffer,
+      ],
     });
   });
   if (result.typ === "err") {
@@ -214,16 +224,23 @@ function separationUpdaters(
 export async function genPreview(
   blob: Blob,
   pool: readonly ColorSpaceObject[],
+  renderPool: readonly ColorSpaceObject[],
   increments: number,
 ): Promise<Blob> {
   if (isRaster(blob.type)) {
-    const { preview } = await rasterPipeline(blob, pool, increments);
+    const { preview } = await rasterPipeline(
+      blob,
+      pool,
+      renderPool,
+      increments,
+    );
     return preview;
   }
   const update = new Map<RgbU32, RgbU32>();
   for await (const [key, color] of bulkColorSeparation(
     extractColors(blob),
     pool,
+    renderPool,
     increments,
   )) {
     update.set(key, color);
@@ -235,16 +252,18 @@ export async function genPreview(
 export async function genPreviewAndSeparation(
   blob: Blob,
   pool: readonly ColorSpaceObject[],
+  renderPool: readonly ColorSpaceObject[],
   increments: number,
 ): Promise<{ preview: Blob; separations: readonly Blob[] }> {
   if (isRaster(blob.type)) {
-    return await rasterPipeline(blob, pool, increments);
+    return await rasterPipeline(blob, pool, renderPool, increments);
   }
   const update = new Map<RgbU32, RgbU32>();
   const mapping = new Map<RgbU32, number[]>();
   for await (const [key, color, opac] of bulkColorSeparation(
     extractColors(blob),
     pool,
+    renderPool,
     increments,
   )) {
     update.set(key, color);
@@ -318,12 +337,13 @@ export async function genSeparation(
   increments: number,
 ): Promise<readonly Blob[]> {
   if (isRaster(blob.type)) {
-    const { separations } = await rasterPipeline(blob, pool, increments);
+    const { separations } = await rasterPipeline(blob, pool, pool, increments);
     return separations;
   }
   const mapping = new Map<RgbU32, number[]>();
   for await (const [key, , opac] of bulkColorSeparation(
     extractColors(blob),
+    pool,
     pool,
     increments,
   )) {

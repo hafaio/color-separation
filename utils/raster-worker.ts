@@ -1,6 +1,6 @@
 import * as d3color from "d3-color";
 import { packRgb, type RgbU32, unpackRgb } from "./color";
-import { colorSeparation } from "./sep";
+import { colorSeparation, composeColors } from "./sep";
 import type { RasterMessage, RasterResult } from "./winterface";
 
 addEventListener("message", (event: MessageEvent<RasterMessage>) => {
@@ -9,7 +9,7 @@ addEventListener("message", (event: MessageEvent<RasterMessage>) => {
 
 async function run(message: RasterMessage): Promise<void> {
   try {
-    const { blob, pool, increments, outputType } = message;
+    const { blob, pool, renderPool, increments, outputType } = message;
     const numChannels = pool.length;
     const numOutputs = 1 + numChannels;
 
@@ -28,21 +28,26 @@ async function run(message: RasterMessage): Promise<void> {
     }
 
     const colorPool: d3color.RGBColor[] = [];
+    const renderColors: d3color.RGBColor[] = [];
     for (let i = 0; i < pool.length; i++) {
       const { r, g, b } = unpackRgb(pool[i]);
       colorPool.push(d3color.rgb(r, g, b));
+      const { r: rr, g: rg, b: rb } = unpackRgb(renderPool[i]);
+      renderColors.push(d3color.rgb(rr, rg, rb));
     }
 
     const triples = numOutputs * 3;
     const lookup = new Map<RgbU32, Uint8Array>();
     for (const key of unique) {
       const { r, g, b } = unpackRgb(key);
-      const { color, opacities } = colorSeparation(
-        d3color.rgb(r, g, b),
-        colorPool,
-        { increments },
-      );
-      const { r: pr, g: pg, b: pb } = color.rgb();
+      const { opacities } = colorSeparation(d3color.rgb(r, g, b), colorPool, {
+        increments,
+      });
+      const {
+        r: pr,
+        g: pg,
+        b: pb,
+      } = composeColors(opacities, renderColors).rgb();
       const bytes = new Uint8Array(triples);
       bytes[0] = pr;
       bytes[1] = pg;
