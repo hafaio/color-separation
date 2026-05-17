@@ -24,7 +24,7 @@ export default function UploadButton({
       <input
         ref={input}
         type="file"
-        accept="image/svg+xml, image/png, image/jpeg"
+        accept="image/svg+xml, image/png, image/jpeg, image/webp"
         onChange={onChange}
         className="hidden"
       />
