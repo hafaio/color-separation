@@ -1,20 +1,20 @@
 import type { ColorSpaceObject } from "d3-color";
-import * as d3color from "d3-color";
+import { packRgb, type RgbU32 } from "./color";
 import type { Result } from "./winterface";
 
 export async function* bulkColorSeparation(
-  colorIter: AsyncIterable<ColorSpaceObject>,
+  colorIter: AsyncIterable<RgbU32>,
   pool: readonly ColorSpaceObject[],
   increments: number,
-): AsyncIterableIterator<[string, ColorSpaceObject, number[]]> {
-  const colors = new Set<string>();
+): AsyncIterableIterator<[RgbU32, RgbU32, number[]]> {
+  const colors = new Set<RgbU32>();
   for await (const color of colorIter) {
-    colors.add(color.formatHex());
+    colors.add(color);
   }
-  const transPool = new Uint8ClampedArray(pool.length * 3);
+  const transPool = new Uint32Array(pool.length);
   for (const [i, color] of pool.entries()) {
     const { r, g, b } = color.rgb();
-    transPool.set([r, g, b], i * 3);
+    transPool[i] = packRgb(r, g, b);
   }
 
   const message = { colors, pool: transPool, increments };
@@ -34,9 +34,8 @@ export async function* bulkColorSeparation(
   const { prevs, opacs } = res;
   let i = 0;
   for (const key of colors) {
-    const [r, g, b] = prevs.slice(i * 3, (i + 1) * 3);
     const opac = [...opacs.slice(i * pool.length, (i + 1) * pool.length)];
-    yield [key, d3color.rgb(r, g, b), opac];
+    yield [key, prevs[i], opac];
     i++;
   }
 }
