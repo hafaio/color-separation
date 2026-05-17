@@ -125,7 +125,7 @@ export default function Editor({
         colors={colors}
         toggleColor={toggleColor}
         remapColor={remapColor}
-        disabled={rendering}
+        muted={rendering}
       />
       <EditorHeader>Palette</EditorHeader>
       <p className="text-slate-600 dark:text-slate-400">

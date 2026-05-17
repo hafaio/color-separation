@@ -5,12 +5,12 @@ export default function ColorPicker({
   colors,
   toggleColor,
   remapColor,
-  disabled,
+  muted,
 }: {
   colors: Map<string, [string, boolean, string | undefined]>;
   toggleColor: (color: string) => void;
   remapColor: (color: string, remap: string) => void;
-  disabled: boolean;
+  muted: boolean;
 }): ReactElement {
   // TODO for colors we know, we may want to use their cmyk variant since it
   // doesn't use the simple 1-1
@@ -26,7 +26,7 @@ export default function ColorPicker({
       remap={remap}
       palette={palette}
       active={active}
-      disabled={disabled}
+      muted={muted}
       key={color}
     />
   ));
