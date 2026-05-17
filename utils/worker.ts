@@ -5,7 +5,7 @@ import type { Message, Result } from "./winterface";
 
 addEventListener("message", (event: MessageEvent<Message>) => {
   try {
-    const { colors, pool, renderPool, increments } = event.data;
+    const { colors, pool, renderPool, increments, lambda } = event.data;
 
     const colorPool = [];
     const renderColors = [];
@@ -23,6 +23,7 @@ addEventListener("message", (event: MessageEvent<Message>) => {
       const { r, g, b } = unpackRgb(key);
       const { opacities } = colorSeparation(d3color.rgb(r, g, b), colorPool, {
         increments,
+        lambda,
       });
       const {
         r: pr,

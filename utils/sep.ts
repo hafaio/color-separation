@@ -28,50 +28,51 @@ export interface Result {
   opacities: number[];
 }
 
+const L1_ITERATIONS = 4;
+const L1_EPSILON = 0.01;
+const LAMBDA_SCALE = 255;
+
 /**
  * Perform approximate subtractive color separation
  *
- * All colors should be in standard (non-alpha) hex, e.g. "#rrggbb".
- *
  * @param target - the target color
  * @param pool - an array of the available colors
- * @param quadratic - true if using quadratic optimization
  * @param increments - the number of color increments to use; opacities will
  *   always be multiples of 1 / increments; if 0 then use continuous increments
+ * @param lambda - sparsity penalty in [0, 1], scaled internally; > 0 enables
+ *   iterative reweighted L1 to bias toward fewer pool colors per output
  */
 export function colorSeparation(
   target: ColorSpaceObject,
   pool: readonly ColorSpaceObject[],
   {
     increments = 0,
+    lambda = 0,
   }: {
     increments?: number;
+    lambda?: number;
   } = {},
 ): Result {
   const rgbTarget = target.rgb();
   const rgbPool = pool.map((color) => color.rgb());
 
   const mult = Math.max(increments, 1);
-  const weighting = 1e-7;
-  const weights = rgbPool.map(({ r, g, b }) => weighting * (r + g + b));
+  const tieBreak = 1e-7;
+  const tieWeights = rgbPool.map(({ r, g, b }) => tieBreak * (r + g + b));
 
   const constraints: Record<string, Constraint> = {};
   const variables: Record<string, Variable> = {};
   const ints: Record<string, 1> = {};
 
-  for (const [j, weight] of weights.entries()) {
-    // maximum weight of 1
+  for (const [j, weight] of tieWeights.entries()) {
     const mx = `mx ${j}`;
     constraints[mx] = { max: mult };
-
-    // tie break towards lighter colors
     variables[`mix ${j}`] = { error: weight, [mx]: 1 };
   }
 
   for (const prop of ["r", "g", "b"] as const) {
     const channel = 255 - rgbTarget[prop];
 
-    // slack variable for absolute value loss
     const up = `up ${prop}`;
     constraints[up] = { max: channel };
 
@@ -90,27 +91,56 @@ export function colorSeparation(
   }
 
   if (increments > 0) {
-    for (const [j] of weights.entries()) {
+    for (const [j] of tieWeights.entries()) {
       ints[`mix ${j}`] = 1;
     }
   }
 
-  const { result, feasible, bounded, ...vals } = solver.Solve({
-    optimize: "error",
-    opType: "min",
-    constraints,
-    variables,
-    ints,
-  });
-  /* istanbul ignore if */
-  if (!feasible || !bounded) {
-    throw new Error("couldn't find bounded feasible solution");
+  const effectiveLambda = lambda * LAMBDA_SCALE;
+
+  const solveOnce = (): Record<string, number> => {
+    const {
+      result: _result,
+      feasible,
+      bounded,
+      ...vals
+    } = solver.Solve({
+      optimize: "error",
+      opType: "min",
+      constraints,
+      variables,
+      ints,
+    });
+    /* istanbul ignore if */
+    if (!feasible || !bounded) {
+      throw new Error("couldn't find bounded feasible solution");
+    }
+    return vals;
+  };
+
+  let vals: Record<string, number>;
+  if (effectiveLambda > 0) {
+    vals = solveOnce();
+    for (let iter = 0; iter < L1_ITERATIONS; iter++) {
+      for (const [j, tie] of tieWeights.entries()) {
+        const opacity = (vals[`mix ${j}`] ?? 0) / mult;
+        variables[`mix ${j}`].error =
+          tie + effectiveLambda / (opacity + L1_EPSILON);
+      }
+      vals = solveOnce();
+    }
+  } else {
+    vals = solveOnce();
   }
+
   const opacities = rgbPool.map((_, i) =>
     Math.min((vals[`mix ${i}`] ?? 0) / mult, 1),
   );
-  const cond = opacities.reduce((s, v, i) => s + weights[i] * v, 0);
-  const error = (result - cond) / (3 * 255);
+  let slackSum = 0;
+  for (const prop of ["r", "g", "b"] as const) {
+    slackSum += vals[`slack ${prop}`] ?? 0;
+  }
+  const error = slackSum / (3 * 255);
 
   return {
     error,
