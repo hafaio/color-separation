@@ -197,7 +197,7 @@ export default function App(): ReactElement {
       }
       if (rejected.length) {
         toaster.create({
-          title: "Dropped file was not an SVG, PNG, or JPEG",
+          title: "Dropped file was not an SVG, PNG, JPEG, or WebP",
           type: "error",
         });
       }
@@ -210,6 +210,7 @@ export default function App(): ReactElement {
       "image/svg+xml": [],
       "image/png": [],
       "image/jpeg": [],
+      "image/webp": [],
     },
     multiple: false,
     noClick: true,
