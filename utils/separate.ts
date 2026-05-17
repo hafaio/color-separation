@@ -1,18 +1,50 @@
 import type { ColorSpaceObject } from "d3-color";
 import * as d3color from "d3-color";
 import { bulkColorSeparation } from "./bulksep";
+import { packRgb, type RgbU32, unpackRgb } from "./color";
 import { blob2url, url2blob } from "./conversion";
+import type { RasterMessage, RasterResult } from "./winterface";
 
 const COLOR_PROPS = ["fill", "stroke", "stopColor"] as const;
 
-async function* extractColors(
+function isRaster(type: string): boolean {
+  return type === "image/png" || type === "image/jpeg" || type === "image/webp";
+}
+
+async function rasterPipeline(
   blob: Blob,
-): AsyncIterableIterator<ColorSpaceObject> {
-  if (
-    blob.type === "image/png" ||
-    blob.type === "image/jpeg" ||
-    blob.type === "image/webp"
-  ) {
+  pool: readonly ColorSpaceObject[],
+  increments: number,
+): Promise<{ preview: Blob; separations: readonly Blob[] }> {
+  const transPool = new Uint32Array(pool.length);
+  for (const [i, color] of pool.entries()) {
+    const { r, g, b } = color.rgb();
+    transPool[i] = packRgb(r, g, b);
+  }
+  const message: RasterMessage = {
+    blob,
+    pool: transPool,
+    increments,
+    outputType: blob.type,
+  };
+  const worker = new Worker(new URL("./raster-worker.ts", import.meta.url));
+  const result = await new Promise<RasterResult>((resolve) => {
+    worker.addEventListener("message", (event: MessageEvent<RasterResult>) => {
+      resolve(event.data);
+      worker.terminate();
+    });
+    worker.postMessage(message, {
+      transfer: [transPool.buffer as ArrayBuffer],
+    });
+  });
+  if (result.typ === "err") {
+    throw new Error(result.err);
+  }
+  return { preview: result.preview, separations: result.separations };
+}
+
+async function* extractColors(blob: Blob): AsyncIterableIterator<RgbU32> {
+  if (isRaster(blob.type)) {
     const bmp = await createImageBitmap(blob);
     const canvas = new OffscreenCanvas(bmp.width, bmp.height);
     const ctx = canvas.getContext("2d")!;
@@ -21,13 +53,12 @@ async function* extractColors(
       colorSpace: "srgb",
     });
     for (let i = 0; i < data.length; i += 4) {
-      const [r, g, b] = data.slice(i, i + 3);
-      yield d3color.rgb(r, g, b);
+      yield packRgb(data[i], data[i + 1], data[i + 2]);
     }
   } else if (blob.type === "image/svg+xml") {
     const text = await blob.text();
     const parser = new DOMParser();
-    const svg = parser.parseFromString(text, blob.type);
+    const svg = parser.parseFromString(text, "image/svg+xml");
     for (const elem of svg.querySelectorAll("*")) {
       if (elem instanceof SVGStyleElement) {
         for (const rule of elem.sheet?.cssRules ?? []) {
@@ -35,7 +66,8 @@ async function* extractColors(
             for (const prop of COLOR_PROPS) {
               const color = d3color.color(rule.style?.[prop]);
               if (color) {
-                yield color;
+                const { r, g, b } = color.rgb();
+                yield packRgb(r, g, b);
               }
             }
           }
@@ -49,7 +81,8 @@ async function* extractColors(
         for (const prop of COLOR_PROPS) {
           const color = d3color.color(elem.style?.[prop]);
           if (color) {
-            yield color;
+            const { r, g, b } = color.rgb();
+            yield packRgb(r, g, b);
           }
         }
       }
@@ -61,73 +94,121 @@ async function* extractColors(
 
 async function updateColors(
   blob: Blob,
-  update: (css: ColorSpaceObject) => ColorSpaceObject,
-): Promise<Blob> {
+  updaters: readonly ((css: ColorSpaceObject) => ColorSpaceObject)[],
+): Promise<readonly Blob[]> {
   if (
     blob.type === "image/png" ||
     blob.type === "image/jpeg" ||
     blob.type === "image/webp"
   ) {
     const bmp = await createImageBitmap(blob);
-    const canvas = new OffscreenCanvas(bmp.width, bmp.height);
-    const ctx = canvas.getContext("2d")!;
-    ctx.drawImage(bmp, 0, 0);
-    const imdat = ctx.getImageData(0, 0, bmp.width, bmp.height, {
+    const { width, height } = bmp;
+    const srcCanvas = new OffscreenCanvas(width, height);
+    const srcCtx = srcCanvas.getContext("2d")!;
+    srcCtx.drawImage(bmp, 0, 0);
+    const srcData = srcCtx.getImageData(0, 0, width, height, {
       colorSpace: "srgb",
-    });
-    for (let i = 0; i < imdat.data.length; i += 4) {
-      const [ri, gi, bi] = imdat.data.slice(i, i + 3);
-      const { r, g, b } = update(d3color.rgb(ri, gi, bi)).rgb();
-      imdat.data.set([r, g, b], i);
+    }).data;
+    const outCanvases = updaters.map(() => new OffscreenCanvas(width, height));
+    const outCtxs = outCanvases.map((canvas) => canvas.getContext("2d")!);
+    const outDatas = outCtxs.map((ctx) =>
+      ctx.createImageData(width, height, { colorSpace: "srgb" }),
+    );
+    for (let i = 0; i < srcData.length; i += 4) {
+      const src = d3color.rgb(srcData[i], srcData[i + 1], srcData[i + 2]);
+      const alpha = srcData[i + 3];
+      for (let j = 0; j < updaters.length; j++) {
+        const { r, g, b } = updaters[j](src).rgb();
+        const out = outDatas[j].data;
+        out[i] = r;
+        out[i + 1] = g;
+        out[i + 2] = b;
+        out[i + 3] = alpha;
+      }
     }
-    ctx.putImageData(imdat, 0, 0);
-    return await canvas.convertToBlob({ type: blob.type });
+    for (let j = 0; j < outCtxs.length; j++) {
+      outCtxs[j].putImageData(outDatas[j], 0, 0);
+    }
+    return await Promise.all(
+      outCanvases.map((canvas) => canvas.convertToBlob({ type: blob.type })),
+    );
   } else if (blob.type === "image/svg+xml") {
     const text = await blob.text();
     const parser = new DOMParser();
-    const svg = parser.parseFromString(text, blob.type);
-
-    const proms = [];
-    for (const elem of svg.querySelectorAll("*")) {
-      if (elem instanceof SVGStyleElement) {
-        const rules = [...(elem.sheet?.cssRules ?? [])];
-        for (const rule of rules) {
-          if (rule instanceof CSSStyleRule) {
+    // Pre-process embedded images once across all updaters
+    const discovery = parser.parseFromString(text, "image/svg+xml");
+    const imageElements = [
+      ...discovery.querySelectorAll("image"),
+    ] as SVGImageElement[];
+    const processedImages = await Promise.all(
+      imageElements.map(async (elem) => {
+        const href = await url2blob(elem.href.baseVal);
+        const blobs = await updateColors(href, updaters);
+        return await Promise.all(blobs.map(blob2url));
+      }),
+    );
+    const serial = new XMLSerializer();
+    return await Promise.all(
+      updaters.map(async (update, updaterIdx) => {
+        const svg = parser.parseFromString(text, "image/svg+xml");
+        let imgIdx = 0;
+        for (const elem of svg.querySelectorAll("*")) {
+          if (elem instanceof SVGStyleElement) {
+            const rules = [...(elem.sheet?.cssRules ?? [])];
+            for (const rule of rules) {
+              if (rule instanceof CSSStyleRule) {
+                for (const prop of COLOR_PROPS) {
+                  const init = d3color.color(rule.style?.[prop]);
+                  if (init) {
+                    rule.style[prop] = update(init).toString();
+                  }
+                }
+              }
+            }
+            elem.textContent = rules.map((rule) => rule.cssText).join("\n");
+          } else if (elem instanceof SVGImageElement) {
+            elem.setAttribute("href", processedImages[imgIdx][updaterIdx]);
+            imgIdx++;
+          } else if (elem instanceof SVGElement) {
             for (const prop of COLOR_PROPS) {
-              const init = d3color.color(rule.style?.[prop]);
+              const init = d3color.color(elem.style[prop]);
               if (init) {
-                rule.style[prop] = update(init).toString();
+                elem.style[prop] = update(init).toString();
               }
             }
           }
         }
-        // need to actually update the style
-        elem.textContent = rules.map((rule) => rule.cssText).join("\n");
-      } else if (elem instanceof SVGImageElement) {
-        proms.push(
-          (async () => {
-            const href = await url2blob(elem.href.baseVal);
-            const blob = await updateColors(href, update);
-            const url = await blob2url(blob);
-            elem.setAttribute("href", url);
-          })(),
-        );
-      } else if (elem instanceof SVGElement) {
-        for (const prop of COLOR_PROPS) {
-          const init = d3color.color(elem.style[prop]);
-          if (init) {
-            elem.style[prop] = update(init).toString();
-          }
-        }
-      }
-    }
-    await Promise.all(proms);
-    const serial = new XMLSerializer();
-    const rendered = serial.serializeToString(svg);
-    return new Blob([rendered], { type: "image/svg+xml" });
+        return new Blob([serial.serializeToString(svg)], {
+          type: "image/svg+xml",
+        });
+      }),
+    );
   } else {
     throw new Error(`unhandled url type: ${blob.type}`);
   }
+}
+
+function previewUpdater(
+  update: ReadonlyMap<RgbU32, RgbU32>,
+): (orig: ColorSpaceObject) => ColorSpaceObject {
+  return (orig) => {
+    const { r: sr, g: sg, b: sb } = orig.rgb();
+    const { r, g, b } = unpackRgb(update.get(packRgb(sr, sg, sb))!);
+    return d3color.rgb(r, g, b, orig.opacity);
+  };
+}
+
+function separationUpdaters(
+  mapping: ReadonlyMap<RgbU32, number[]>,
+  poolSize: number,
+): readonly ((orig: ColorSpaceObject) => ColorSpaceObject)[] {
+  return Array.from({ length: poolSize }, (_, ind) => {
+    return (orig: ColorSpaceObject) => {
+      const { r: sr, g: sg, b: sb } = orig.rgb();
+      const opacity = mapping.get(packRgb(sr, sg, sb))![ind];
+      return d3color.gray((1 - opacity) * 100).copy({ opacity: orig.opacity });
+    };
+  });
 }
 
 export async function genPreview(
@@ -135,11 +216,11 @@ export async function genPreview(
   pool: readonly ColorSpaceObject[],
   increments: number,
 ): Promise<Blob> {
-  /* TODO some part of this initial setup still takes some time. I'm not sure
-   * if it's the image munging, or the color set creation. Theoretically, we
-   * could create the color set on the webworker, but in practice this turned
-   * out not as fast, and it's not clear why. */
-  const update = new Map<string, ColorSpaceObject>();
+  if (isRaster(blob.type)) {
+    const { preview } = await rasterPipeline(blob, pool, increments);
+    return preview;
+  }
+  const update = new Map<RgbU32, RgbU32>();
   for await (const [key, color] of bulkColorSeparation(
     extractColors(blob),
     pool,
@@ -147,12 +228,88 @@ export async function genPreview(
   )) {
     update.set(key, color);
   }
+  const [out] = await updateColors(blob, [previewUpdater(update)]);
+  return out;
+}
 
-  const updater = (orig: ColorSpaceObject): ColorSpaceObject => {
-    return update.get(orig.formatHex())!.copy({ opacity: orig.opacity });
-  };
+export async function genPreviewAndSeparation(
+  blob: Blob,
+  pool: readonly ColorSpaceObject[],
+  increments: number,
+): Promise<{ preview: Blob; separations: readonly Blob[] }> {
+  if (isRaster(blob.type)) {
+    return await rasterPipeline(blob, pool, increments);
+  }
+  const update = new Map<RgbU32, RgbU32>();
+  const mapping = new Map<RgbU32, number[]>();
+  for await (const [key, color, opac] of bulkColorSeparation(
+    extractColors(blob),
+    pool,
+    increments,
+  )) {
+    update.set(key, color);
+    mapping.set(key, opac);
+  }
+  const updaters = [
+    previewUpdater(update),
+    ...separationUpdaters(mapping, pool.length),
+  ];
+  const [preview, ...separations] = await updateColors(blob, updaters);
+  return { preview, separations };
+}
 
-  return await updateColors(blob, updater);
+export async function genGrid(
+  separations: readonly Blob[],
+  names: readonly string[],
+  colors: readonly ColorSpaceObject[],
+): Promise<Blob> {
+  const urls = separations.map((sep) => URL.createObjectURL(sep));
+  try {
+    const images = await Promise.all(
+      urls.map(
+        (url) =>
+          new Promise<HTMLImageElement>((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => reject(new Error(`failed to load ${url}`));
+            img.src = url;
+          }),
+      ),
+    );
+    const cellWidth = Math.max(...images.map((img) => img.naturalWidth));
+    const cellHeight = Math.max(...images.map((img) => img.naturalHeight));
+    const cols = Math.ceil(Math.sqrt(images.length));
+    const rows = Math.ceil(images.length / cols);
+    const canvas = new OffscreenCanvas(cols * cellWidth, rows * cellHeight);
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const fontSize = Math.min(cellWidth, cellHeight) / 10;
+    ctx.font = `bold ${fontSize}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (const [index, img] of images.entries()) {
+      const col = index % cols;
+      const row = Math.floor(index / cols);
+      const cellX = col * cellWidth;
+      const cellY = row * cellHeight;
+      const dx = cellX + (cellWidth - img.naturalWidth) / 2;
+      const dy = cellY + (cellHeight - img.naturalHeight) / 2;
+      ctx.drawImage(img, dx, dy);
+      const cx = cellX + cellWidth / 2;
+      const cy = cellY + cellHeight / 2;
+      const { r, g, b } = colors[index].rgb();
+      ctx.globalCompositeOperation = "difference";
+      ctx.fillStyle = d3color.rgb(255 - r, 255 - g, 255 - b).formatHex();
+      ctx.fillText(names[index], cx, cy);
+      ctx.globalCompositeOperation = "source-over";
+    }
+    return await canvas.convertToBlob({ type: "image/png" });
+  } finally {
+    for (const url of urls) {
+      URL.revokeObjectURL(url);
+    }
+  }
 }
 
 export async function genSeparation(
@@ -160,7 +317,11 @@ export async function genSeparation(
   pool: readonly ColorSpaceObject[],
   increments: number,
 ): Promise<readonly Blob[]> {
-  const mapping = new Map<string, number[]>();
+  if (isRaster(blob.type)) {
+    const { separations } = await rasterPipeline(blob, pool, increments);
+    return separations;
+  }
+  const mapping = new Map<RgbU32, number[]>();
   for await (const [key, , opac] of bulkColorSeparation(
     extractColors(blob),
     pool,
@@ -168,16 +329,5 @@ export async function genSeparation(
   )) {
     mapping.set(key, opac);
   }
-
-  return await Promise.all(
-    pool.map((_, ind) => {
-      const updater = (orig: ColorSpaceObject): ColorSpaceObject => {
-        const opacity = mapping.get(orig.formatHex())![ind];
-        const updated = d3color.gray((1 - opacity) * 100);
-        return updated.copy({ opacity: orig.opacity });
-      };
-
-      return updateColors(blob, updater);
-    }),
-  );
+  return await updateColors(blob, separationUpdaters(mapping, pool.length));
 }

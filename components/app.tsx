@@ -15,7 +15,11 @@ import {
 } from "react";
 import { type FileRejection, useDropzone } from "react-dropzone";
 import { blob2url, resizeBlob, url2blob } from "../utils/conversion";
-import { genPreview, genSeparation } from "../utils/separate";
+import {
+  genGrid,
+  genPreviewAndSeparation,
+  genSeparation,
+} from "../utils/separate";
 import DropModal from "./drop-modal";
 import Editor, { type Action } from "./editor";
 import Footer from "./footer";
@@ -33,6 +37,7 @@ interface Parsed {
 
 export default function App(): ReactElement {
   const [showRaw, setShowRaw] = useState(false);
+  const [showGrid, setShowGrid] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [rendering, setRendering] = useState(false);
   const [isDownloading, setDownloading] = useState(false);
@@ -70,38 +75,63 @@ export default function App(): ReactElement {
   );
 
   const [preview, setPreview] = useState<string | undefined>();
+  const [grid, setGrid] = useState<string | undefined>();
   const [increments, setIncrements] = useState(0);
 
   useEffect(() => {
-    if (!parsed || ![...colors.values()].some(([, active]) => active)) {
+    if (!parsed) {
       setPreview(undefined);
-    } else {
-      void (async () => {
-        try {
-          setRendering(true);
-
-          const pool = [];
-          for (const [color, [, active]] of colors) {
-            if (active) {
-              pool.push(d3color.color(color)!);
-            }
-          }
-          const blob = await url2blob(parsed.preview);
-          const updated = await genPreview(blob, pool, increments);
-          const url = await blob2url(updated);
-          setPreview(url);
-        } catch (ex) {
-          console.error(ex);
+      setGrid(undefined);
+      return;
+    }
+    const pool = [];
+    const names = [];
+    for (const [color, [name, active]] of colors) {
+      if (active) {
+        pool.push(d3color.color(color)!);
+        names.push(name);
+      }
+    }
+    if (!pool.length) {
+      setPreview(undefined);
+      setGrid(undefined);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        setRendering(true);
+        const blob = await url2blob(parsed.preview);
+        const { preview: previewBlob, separations } =
+          await genPreviewAndSeparation(blob, pool, increments);
+        const gridBlob = await genGrid(separations, names, pool);
+        const [previewUrl, gridUrl] = await Promise.all([
+          blob2url(previewBlob),
+          blob2url(gridBlob),
+        ]);
+        if (!cancelled) {
+          setPreview(previewUrl);
+          setGrid(gridUrl);
+        }
+      } catch (ex) {
+        console.error(ex);
+        if (!cancelled) {
           setPreview(undefined);
+          setGrid(undefined);
           toaster.create({
             title: "Couldn't separate image",
             type: "error",
           });
-        } finally {
+        }
+      } finally {
+        if (!cancelled) {
           setRendering(false);
         }
-      })();
-    }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [colors, increments, parsed]);
 
   const download = useCallback(() => {
@@ -173,12 +203,17 @@ export default function App(): ReactElement {
         download={download}
         isDownloading={isDownloading}
         setShowRaw={setShowRaw}
+        setShowGrid={setShowGrid}
         rendering={rendering}
       />
     ) : (
       <HelpText closeable={!!parsed} />
     );
-  const src = showRaw ? parsed?.preview : (preview ?? parsed?.preview);
+  const src = showRaw
+    ? parsed?.preview
+    : showGrid && grid
+      ? grid
+      : (preview ?? parsed?.preview);
   const img = src ? (
     <Image
       src={src}

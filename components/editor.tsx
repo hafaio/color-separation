@@ -23,6 +23,7 @@ export default function Editor({
   download,
   isDownloading,
   setShowRaw,
+  setShowGrid,
   rendering,
 }: {
   colors: Map<string, [string, boolean]>;
@@ -32,6 +33,7 @@ export default function Editor({
   download: () => void;
   isDownloading: boolean;
   setShowRaw: (val: boolean) => void;
+  setShowGrid: (val: boolean) => void;
   rendering: boolean;
 }): ReactElement {
   const exportText = colors.size
@@ -43,6 +45,12 @@ export default function Editor({
   const onUp = useCallback(() => {
     setShowRaw(false);
   }, [setShowRaw]);
+  const onGridDown = useCallback(() => {
+    setShowGrid(true);
+  }, [setShowGrid]);
+  const onGridUp = useCallback(() => {
+    setShowGrid(false);
+  }, [setShowGrid]);
   const toggleColor = useCallback(
     (color: string) => {
       modifyColors({ action: "toggle", color });
@@ -72,6 +80,15 @@ export default function Editor({
         type="button"
       >
         Toggle Original
+      </button>
+      <button
+        className="w-full px-4 py-2 bg-slate-300 hover:bg-slate-400 text-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 dark:text-white rounded disabled:opacity-50 disabled:pointer-events-none"
+        disabled={!selected}
+        onMouseDown={onGridDown}
+        onMouseUp={onGridUp}
+        type="button"
+      >
+        Toggle Channels
       </button>
       <Tooltip.Root>
         <Tooltip.Trigger asChild>
