@@ -35,5 +35,5 @@ export async function resizeBlob(
   const canvas = new OffscreenCanvas(width, height);
   const ctx = canvas.getContext("2d")!;
   ctx.drawImage(bmp, 0, 0, width, height);
-  return await canvas.convertToBlob();
+  return await canvas.convertToBlob({ type: inp.type });
 }

@@ -8,7 +8,11 @@ const COLOR_PROPS = ["fill", "stroke", "stopColor"] as const;
 async function* extractColors(
   blob: Blob,
 ): AsyncIterableIterator<ColorSpaceObject> {
-  if (blob.type === "image/png" || blob.type === "image/jpeg") {
+  if (
+    blob.type === "image/png" ||
+    blob.type === "image/jpeg" ||
+    blob.type === "image/webp"
+  ) {
     const bmp = await createImageBitmap(blob);
     const canvas = new OffscreenCanvas(bmp.width, bmp.height);
     const ctx = canvas.getContext("2d")!;
@@ -59,7 +63,11 @@ async function updateColors(
   blob: Blob,
   update: (css: ColorSpaceObject) => ColorSpaceObject,
 ): Promise<Blob> {
-  if (blob.type === "image/png" || blob.type === "image/jpeg") {
+  if (
+    blob.type === "image/png" ||
+    blob.type === "image/jpeg" ||
+    blob.type === "image/webp"
+  ) {
     const bmp = await createImageBitmap(blob);
     const canvas = new OffscreenCanvas(bmp.width, bmp.height);
     const ctx = canvas.getContext("2d")!;
@@ -73,7 +81,7 @@ async function updateColors(
       imdat.data.set([r, g, b], i);
     }
     ctx.putImageData(imdat, 0, 0);
-    return await canvas.convertToBlob();
+    return await canvas.convertToBlob({ type: blob.type });
   } else if (blob.type === "image/svg+xml") {
     const text = await blob.text();
     const parser = new DOMParser();
