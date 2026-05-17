@@ -284,9 +284,30 @@ export async function genPreviewAndSeparation(
   return { preview, separations };
 }
 
+function tintSeparation(
+  img: HTMLImageElement,
+  color: ColorSpaceObject,
+): OffscreenCanvas {
+  const width = img.naturalWidth;
+  const height = img.naturalHeight;
+  const canvas = new OffscreenCanvas(width, height);
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(img, 0, 0);
+  const imgData = ctx.getImageData(0, 0, width, height);
+  const { r: pr, g: pg, b: pb } = color.rgb();
+  const data = imgData.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const opacity = (255 - data[i]) / 255;
+    data[i] = Math.round(255 * (1 - opacity) + pr * opacity);
+    data[i + 1] = Math.round(255 * (1 - opacity) + pg * opacity);
+    data[i + 2] = Math.round(255 * (1 - opacity) + pb * opacity);
+  }
+  ctx.putImageData(imgData, 0, 0);
+  return canvas;
+}
+
 export async function genGrid(
   separations: readonly Blob[],
-  names: readonly string[],
   colors: readonly ColorSpaceObject[],
 ): Promise<Blob> {
   const urls = separations.map((sep) => URL.createObjectURL(sep));
@@ -310,10 +331,6 @@ export async function genGrid(
     const ctx = canvas.getContext("2d")!;
     ctx.fillStyle = "white";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    const fontSize = Math.min(cellWidth, cellHeight) / 10;
-    ctx.font = `bold ${fontSize}px sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
     for (const [index, img] of images.entries()) {
       const col = index % cols;
       const row = Math.floor(index / cols);
@@ -321,14 +338,8 @@ export async function genGrid(
       const cellY = row * cellHeight;
       const dx = cellX + (cellWidth - img.naturalWidth) / 2;
       const dy = cellY + (cellHeight - img.naturalHeight) / 2;
-      ctx.drawImage(img, dx, dy);
-      const cx = cellX + cellWidth / 2;
-      const cy = cellY + cellHeight / 2;
-      const { r, g, b } = colors[index].rgb();
-      ctx.globalCompositeOperation = "difference";
-      ctx.fillStyle = d3color.rgb(255 - r, 255 - g, 255 - b).formatHex();
-      ctx.fillText(names[index], cx, cy);
-      ctx.globalCompositeOperation = "source-over";
+      const tinted = tintSeparation(img, colors[index]);
+      ctx.drawImage(tinted, dx, dy);
     }
     return await canvas.convertToBlob({ type: "image/png" });
   } finally {
