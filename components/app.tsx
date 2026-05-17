@@ -49,29 +49,43 @@ export default function App(): ReactElement {
   const [parsed, setParsed] = useState<Parsed | undefined | null>();
   const [colors, modifyColors] = useReducer(
     (
-      existingColors: Map<string, [string, boolean]>,
+      existingColors: Map<string, [string, boolean, string | undefined]>,
       action: Action,
-    ): Map<string, [string, boolean]> => {
+    ): Map<string, [string, boolean, string | undefined]> => {
       if (action.action === "set") {
         return new Map(
-          action.colors.map(([color, name]) => [color, [name, false]]),
+          action.colors.map(([color, name]) => [
+            color,
+            [name, false, undefined],
+          ]),
         );
       } else if (action.action === "add") {
         const copy = new Map(existingColors);
-        copy.set(action.color, [action.name, false]);
+        copy.set(action.color, [action.name, false, undefined]);
         return copy;
       } else if (action.action === "toggle") {
         const copy = new Map(existingColors);
         const [name, state] = copy.get(action.color)!;
-        copy.set(action.color, [name, !state]);
+        // toggling off clears the remap
+        copy.set(action.color, [name, !state, undefined]);
+        return copy;
+      } else if (action.action === "remap") {
+        const copy = new Map(existingColors);
+        const [name, state] = copy.get(action.color)!;
+        // selecting the original color clears the remap
+        const remap = action.remap === action.color ? undefined : action.remap;
+        copy.set(action.color, [name, state, remap]);
         return copy;
       } else {
         return new Map(
-          [...existingColors].map(([color, [name]]) => [color, [name, false]]),
+          [...existingColors].map(([color, [name]]) => [
+            color,
+            [name, false, undefined],
+          ]),
         );
       }
     },
-    new Map<string, [string, boolean]>(),
+    new Map<string, [string, boolean, string | undefined]>(),
   );
 
   const [preview, setPreview] = useState<string | undefined>();
@@ -85,10 +99,12 @@ export default function App(): ReactElement {
       return;
     }
     const pool = [];
+    const renderPool = [];
     const names = [];
-    for (const [color, [name, active]] of colors) {
+    for (const [color, [name, active, remap]] of colors) {
       if (active) {
         pool.push(d3color.color(color)!);
+        renderPool.push(d3color.color(remap ?? color)!);
         names.push(name);
       }
     }
@@ -103,8 +119,8 @@ export default function App(): ReactElement {
         setRendering(true);
         const blob = await url2blob(parsed.preview);
         const { preview: previewBlob, separations } =
-          await genPreviewAndSeparation(blob, pool, increments);
-        const gridBlob = await genGrid(separations, names, pool);
+          await genPreviewAndSeparation(blob, pool, renderPool, increments);
+        const gridBlob = await genGrid(separations, names, renderPool);
         const [previewUrl, gridUrl] = await Promise.all([
           blob2url(previewBlob),
           blob2url(gridBlob),

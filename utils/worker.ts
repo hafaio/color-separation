@@ -1,16 +1,19 @@
 import * as d3color from "d3-color";
 import { packRgb, unpackRgb } from "./color";
-import { colorSeparation } from "./sep";
+import { colorSeparation, composeColors } from "./sep";
 import type { Message, Result } from "./winterface";
 
 addEventListener("message", (event: MessageEvent<Message>) => {
   try {
-    const { colors, pool, increments } = event.data;
+    const { colors, pool, renderPool, increments } = event.data;
 
     const colorPool = [];
+    const renderColors = [];
     for (let i = 0; i < pool.length; i++) {
       const { r, g, b } = unpackRgb(pool[i]);
       colorPool.push(d3color.rgb(r, g, b));
+      const { r: rr, g: rg, b: rb } = unpackRgb(renderPool[i]);
+      renderColors.push(d3color.rgb(rr, rg, rb));
     }
 
     const prevs = new Uint32Array(colors.size);
@@ -18,12 +21,14 @@ addEventListener("message", (event: MessageEvent<Message>) => {
     let i = 0;
     for (const key of colors) {
       const { r, g, b } = unpackRgb(key);
-      const { color, opacities } = colorSeparation(
-        d3color.rgb(r, g, b),
-        colorPool,
-        { increments },
-      );
-      const { r: pr, g: pg, b: pb } = color.rgb();
+      const { opacities } = colorSeparation(d3color.rgb(r, g, b), colorPool, {
+        increments,
+      });
+      const {
+        r: pr,
+        g: pg,
+        b: pb,
+      } = composeColors(opacities, renderColors).rgb();
       prevs[i] = packRgb(pr, pg, pb);
       opacs.set(opacities, i * colorPool.length);
       i++;

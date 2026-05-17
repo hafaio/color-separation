@@ -111,8 +111,27 @@ export function colorSeparation(
   );
   const cond = opacities.reduce((s, v, i) => s + weights[i] * v, 0);
   const error = (result - cond) / (3 * 255);
-  const total = opacities.reduce((t, o) => t + o, 0);
 
+  return {
+    error,
+    opacities,
+    color: composeColors(opacities, rgbPool),
+  };
+}
+
+/**
+ * Subtractive linear composite of pool colors at given opacities over white.
+ *
+ * Splits out the compositing step so callers can re-render the preview against
+ * a different pool of colors (e.g. user-chosen remaps) while keeping the
+ * opacities optimized for the original separation pool.
+ */
+export function composeColors(
+  opacities: readonly number[],
+  pool: readonly ColorSpaceObject[],
+): ColorSpaceObject {
+  const rgbPool = pool.map((color) => color.rgb());
+  const total = opacities.reduce((t, o) => t + o, 0);
   const init = 255 * (1 - total);
   const closest = d3color.rgb(init, init, init);
   for (const [i, color] of rgbPool.entries()) {
@@ -121,9 +140,5 @@ export function colorSeparation(
       closest[prop] += color[prop] * opacity;
     }
   }
-  return {
-    error,
-    opacities,
-    color: closest.clamp(),
-  };
+  return closest.clamp();
 }

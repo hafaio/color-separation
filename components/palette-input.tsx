@@ -31,7 +31,7 @@ export default function PaletteInput({
   setPalette,
   addColor,
 }: {
-  colors: Map<string, [string, boolean]>;
+  colors: Map<string, [string, boolean, string | undefined]>;
   setPalette: (colors: readonly (readonly [string, string])[]) => void;
   addColor: (color: string, name: string) => void;
 }): ReactElement {

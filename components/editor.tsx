@@ -9,6 +9,7 @@ export type Action =
   | { action: "set"; colors: readonly (readonly [string, string])[] }
   | { action: "add"; color: string; name: string }
   | { action: "toggle"; color: string }
+  | { action: "remap"; color: string; remap: string }
   | { action: "clear" };
 
 function EditorHeader({ children }: PropsWithChildren): ReactElement {
@@ -26,7 +27,7 @@ export default function Editor({
   setShowGrid,
   rendering,
 }: {
-  colors: Map<string, [string, boolean]>;
+  colors: Map<string, [string, boolean, string | undefined]>;
   modifyColors: (action: Action) => void;
   increments: number;
   setIncrements: (inc: number) => void;
@@ -54,6 +55,12 @@ export default function Editor({
   const toggleColor = useCallback(
     (color: string) => {
       modifyColors({ action: "toggle", color });
+    },
+    [modifyColors],
+  );
+  const remapColor = useCallback(
+    (color: string, remap: string) => {
+      modifyColors({ action: "remap", color, remap });
     },
     [modifyColors],
   );
@@ -117,6 +124,7 @@ export default function Editor({
       <ColorPicker
         colors={colors}
         toggleColor={toggleColor}
+        remapColor={remapColor}
         disabled={rendering}
       />
       <EditorHeader>Palette</EditorHeader>

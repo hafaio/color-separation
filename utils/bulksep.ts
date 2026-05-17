@@ -5,6 +5,7 @@ import type { Result } from "./winterface";
 export async function* bulkColorSeparation(
   colorIter: AsyncIterable<RgbU32>,
   pool: readonly ColorSpaceObject[],
+  renderPool: readonly ColorSpaceObject[],
   increments: number,
 ): AsyncIterableIterator<[RgbU32, RgbU32, number[]]> {
   const colors = new Set<RgbU32>();
@@ -12,12 +13,22 @@ export async function* bulkColorSeparation(
     colors.add(color);
   }
   const transPool = new Uint32Array(pool.length);
+  const transRender = new Uint32Array(renderPool.length);
   for (const [i, color] of pool.entries()) {
     const { r, g, b } = color.rgb();
     transPool[i] = packRgb(r, g, b);
   }
+  for (const [i, color] of renderPool.entries()) {
+    const { r, g, b } = color.rgb();
+    transRender[i] = packRgb(r, g, b);
+  }
 
-  const message = { colors, pool: transPool, increments };
+  const message = {
+    colors,
+    pool: transPool,
+    renderPool: transRender,
+    increments,
+  };
   const worker = new Worker(new URL("./worker.ts", import.meta.url));
   const res = await new Promise<Result>((resolve) => {
     worker.addEventListener("message", (event: MessageEvent<Result>) => {
@@ -25,7 +36,10 @@ export async function* bulkColorSeparation(
       worker.terminate();
     });
     worker.postMessage(message, {
-      transfer: [transPool.buffer as ArrayBuffer],
+      transfer: [
+        transPool.buffer as ArrayBuffer,
+        transRender.buffer as ArrayBuffer,
+      ],
     });
   });
   if (res.typ === "err") {
