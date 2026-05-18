@@ -13,9 +13,10 @@
 import type { ColorSpaceObject } from "d3-color";
 import * as d3color from "d3-color";
 import {
-  type Constraint,
+  type ConstraintBound,
+  type SolveResult,
   default as solver,
-  type Variable,
+  type VariableCoefficients,
 } from "javascript-lp-solver";
 import { type LinearRgb, linearToRgb, packRgb, rgbToLinear } from "./color";
 import { goldenMin, gridSearch, multiStartCoordDescent } from "./optimize";
@@ -305,8 +306,8 @@ function subtractiveColorSeparation(
   const tieBreak = 1e-7;
   const tieWeights = rgbPool.map(({ r, g, b }) => tieBreak * (r + g + b));
 
-  const constraints: Record<string, Constraint> = {};
-  const variables: Record<string, Variable> = {};
+  const constraints: Record<string, ConstraintBound> = {};
+  const variables: Record<string, VariableCoefficients> = {};
   const ints: Record<string, 1> = {};
 
   for (const [j, weight] of tieWeights.entries()) {
@@ -355,12 +356,12 @@ function subtractiveColorSeparation(
       constraints,
       variables,
       ints,
-    });
+    }) as SolveResult;
     /* istanbul ignore if */
     if (!feasible || !bounded) {
       throw new Error("couldn't find bounded feasible solution");
     }
-    return vals;
+    return vals as Record<string, number>;
   };
 
   let vals: Record<string, number>;
