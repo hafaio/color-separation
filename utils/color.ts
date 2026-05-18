@@ -1,4 +1,4 @@
-import * as d3color from "d3-color";
+import { type Color, converter, type Rgb } from "culori";
 
 /** RGB color packed into a single 32-bit integer: (r << 16) | (g << 8) | b. */
 export type RgbU32 = number;
@@ -28,9 +28,44 @@ export function rgbToCss(c: RgbU32): string {
   return `#${(c & 0xffffff).toString(16).padStart(6, "0")}`;
 }
 
-/** Packed RGB → d3-color RGBColor (no allocations for r/g/b). */
-export function rgbToD3(c: RgbU32): d3color.RGBColor {
-  return d3color.rgb((c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff);
+const toRgb = converter("rgb");
+const toLab = converter("lab");
+
+/** Construct a culori Rgb from 0..255 byte channels + optional 0..1 alpha. */
+export function bytesToRgb(
+  r: number,
+  g: number,
+  b: number,
+  alpha?: number,
+): Rgb {
+  return { mode: "rgb", r: r / 255, g: g / 255, b: b / 255, alpha };
+}
+
+/** Packed RGB → culori Rgb (channels in [0, 1]). */
+export function rgbToCulori(c: RgbU32): Rgb {
+  return bytesToRgb((c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff);
+}
+
+/** Any culori color → packed RGB (clamped + byte-quantized). */
+export function culoriToPacked(c: Color): RgbU32 {
+  const rgb = toRgb(c);
+  return packRgb(255 * rgb.r, 255 * rgb.g, 255 * rgb.b);
+}
+
+/** Any culori color → 0..255 byte channels + optional 0..1 alpha. */
+export function colorBytes(c: Color): {
+  r: number;
+  g: number;
+  b: number;
+  alpha?: number;
+} {
+  const rgb = toRgb(c);
+  return {
+    r: 255 * rgb.r,
+    g: 255 * rgb.g,
+    b: 255 * rgb.b,
+    alpha: rgb.alpha,
+  };
 }
 
 /** sRGB piecewise transfer (IEC 61966-2-1), per channel in [0, 1]. */
@@ -43,13 +78,9 @@ export function srgbEncode(c: number): number {
   return x <= 0.0031308 ? 12.92 * x : 1.055 * x ** (1 / 2.4) - 0.055;
 }
 
-/** Packed RGB → linear sRGB triple in [0, 1]. */
-export function rgbToLinear(c: RgbU32): LinearRgb {
-  return [
-    srgbDecode(((c >> 16) & 0xff) / 255),
-    srgbDecode(((c >> 8) & 0xff) / 255),
-    srgbDecode((c & 0xff) / 255),
-  ];
+/** One 0..255 byte → linear sRGB in [0, 1]. */
+export function byteToLinear(b: number): number {
+  return srgbDecode(b / 255);
 }
 
 /** Linear sRGB triple → packed RGB (clamped to gamut, byte-quantized). */
@@ -63,6 +94,5 @@ export function linearToRgb(lin: LinearRgb): RgbU32 {
 
 /** CIE L* (perceptual lightness) of a packed RGB. */
 export function luminance(c: RgbU32): number {
-  const { r, g, b } = unpackRgb(c);
-  return d3color.lab(d3color.rgb(r, g, b)).l;
+  return toLab(rgbToCulori(c)).l;
 }
