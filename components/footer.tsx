@@ -12,7 +12,7 @@ export default function Footer({
   toggleHelp: () => void;
 }): ReactElement {
   return (
-    <div className="flex justify-center space-x-2">
+    <div className="flex justify-center space-x-2 flex-shrink-0">
       <Tooltip.Root>
         <Tooltip.Trigger asChild>
           <button

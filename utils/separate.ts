@@ -3,7 +3,63 @@ import * as d3color from "d3-color";
 import { bulkColorSeparation } from "./bulksep";
 import { packRgb, type RgbU32, unpackRgb } from "./color";
 import { blob2url, url2blob } from "./conversion";
-import type { RasterMessage, RasterResult } from "./winterface";
+import type { MixingMode } from "./sep";
+import {
+  type RasterMessage,
+  type RasterResult,
+  type RasterWorkerOut,
+  SOLVER_FRACTION,
+} from "./winterface";
+
+// 40% of trailing budget for SVG `updateColors` finishing post-bulksep.
+const SVG_UPDATE_END = SOLVER_FRACTION + (1 - SOLVER_FRACTION) * 0.4;
+
+/**
+ * Run the SVG-path bulk solver, returning the per-color preview update map,
+ * the per-color opacities, and the chosen print order. Both `genPreview*`
+ * helpers wrap their callers around this — the only differences between
+ * them are which maps they consume from each yielded triple.
+ */
+async function runBulkForSvg(
+  blob: Blob,
+  pool: readonly RgbU32[],
+  renderPool: readonly RgbU32[],
+  mixingMode: MixingMode,
+  autoOrder: boolean,
+  increments: number,
+  lambda: number,
+  onProgress: ((frac: number) => void) | undefined,
+): Promise<{
+  update: Map<RgbU32, RgbU32>;
+  mapping: Map<RgbU32, number[]>;
+  chosenOrder: readonly number[];
+}> {
+  const update = new Map<RgbU32, RgbU32>();
+  const mapping = new Map<RgbU32, number[]>();
+  let chosenOrder: readonly number[] = pool.map((_, i) => i);
+  // Scale worker (solver) progress to the first SOLVER_FRACTION so the
+  // trailing updateColors fills the rest of the bar.
+  const wrapped = onProgress
+    ? (v: number) => onProgress(v * SOLVER_FRACTION)
+    : undefined;
+  for await (const [key, color, opac] of bulkColorSeparation(
+    extractColors(blob),
+    pool,
+    renderPool,
+    mixingMode,
+    autoOrder,
+    increments,
+    lambda,
+    (order) => {
+      chosenOrder = order;
+    },
+    wrapped,
+  )) {
+    update.set(key, color);
+    mapping.set(key, opac);
+  }
+  return { update, mapping, chosenOrder };
+}
 
 const COLOR_PROPS = ["fill", "stroke", "stopColor"] as const;
 
@@ -13,35 +69,44 @@ function isRaster(type: string): boolean {
 
 async function rasterPipeline(
   blob: Blob,
-  pool: readonly ColorSpaceObject[],
-  renderPool: readonly ColorSpaceObject[],
+  pool: readonly RgbU32[],
+  renderPool: readonly RgbU32[],
+  mixingMode: MixingMode,
+  autoOrder: boolean,
   increments: number,
   lambda: number,
-): Promise<{ preview: Blob; separations: readonly Blob[] }> {
-  const transPool = new Uint32Array(pool.length);
-  const transRender = new Uint32Array(renderPool.length);
-  for (const [i, color] of pool.entries()) {
-    const { r, g, b } = color.rgb();
-    transPool[i] = packRgb(r, g, b);
-  }
-  for (const [i, color] of renderPool.entries()) {
-    const { r, g, b } = color.rgb();
-    transRender[i] = packRgb(r, g, b);
-  }
+  onProgress?: (frac: number) => void,
+): Promise<{
+  preview: Blob;
+  separations: readonly Blob[];
+  chosenOrder: readonly number[];
+}> {
+  const transPool = new Uint32Array(pool);
+  const transRender = new Uint32Array(renderPool);
   const message: RasterMessage = {
     blob,
     pool: transPool,
     renderPool: transRender,
+    mixingMode,
+    autoOrder,
     increments,
     lambda,
     outputType: blob.type,
   };
   const worker = new Worker(new URL("./raster-worker.ts", import.meta.url));
   const result = await new Promise<RasterResult>((resolve) => {
-    worker.addEventListener("message", (event: MessageEvent<RasterResult>) => {
-      resolve(event.data);
-      worker.terminate();
-    });
+    worker.addEventListener(
+      "message",
+      (event: MessageEvent<RasterWorkerOut>) => {
+        const msg = event.data;
+        if (msg.typ === "progress") {
+          onProgress?.(msg.value);
+        } else {
+          resolve(msg);
+          worker.terminate();
+        }
+      },
+    );
     worker.postMessage(message, {
       transfer: [
         transPool.buffer as ArrayBuffer,
@@ -52,7 +117,11 @@ async function rasterPipeline(
   if (result.typ === "err") {
     throw new Error(result.err);
   }
-  return { preview: result.preview, separations: result.separations };
+  return {
+    preview: result.preview,
+    separations: result.separations,
+    chosenOrder: result.chosenOrder,
+  };
 }
 
 async function* extractColors(blob: Blob): AsyncIterableIterator<RgbU32> {
@@ -225,8 +294,10 @@ function separationUpdaters(
 
 export async function genPreview(
   blob: Blob,
-  pool: readonly ColorSpaceObject[],
-  renderPool: readonly ColorSpaceObject[],
+  pool: readonly RgbU32[],
+  renderPool: readonly RgbU32[],
+  mixingMode: MixingMode,
+  autoOrder: boolean,
   increments: number,
   lambda: number,
 ): Promise<Blob> {
@@ -235,6 +306,8 @@ export async function genPreview(
       blob,
       pool,
       renderPool,
+      mixingMode,
+      autoOrder,
       increments,
       lambda,
     );
@@ -245,6 +318,8 @@ export async function genPreview(
     extractColors(blob),
     pool,
     renderPool,
+    mixingMode,
+    autoOrder,
     increments,
     lambda,
   )) {
@@ -256,45 +331,58 @@ export async function genPreview(
 
 export async function genPreviewAndSeparation(
   blob: Blob,
-  pool: readonly ColorSpaceObject[],
-  renderPool: readonly ColorSpaceObject[],
+  pool: readonly RgbU32[],
+  renderPool: readonly RgbU32[],
+  mixingMode: MixingMode,
+  autoOrder: boolean,
   increments: number,
   lambda: number,
-): Promise<{ preview: Blob; separations: readonly Blob[] }> {
+  onProgress?: (frac: number) => void,
+): Promise<{
+  preview: Blob;
+  separations: readonly Blob[];
+  chosenOrder: readonly number[];
+}> {
   if (isRaster(blob.type)) {
-    return await rasterPipeline(blob, pool, renderPool, increments, lambda);
+    return await rasterPipeline(
+      blob,
+      pool,
+      renderPool,
+      mixingMode,
+      autoOrder,
+      increments,
+      lambda,
+      onProgress,
+    );
   }
-  const update = new Map<RgbU32, RgbU32>();
-  const mapping = new Map<RgbU32, number[]>();
-  for await (const [key, color, opac] of bulkColorSeparation(
-    extractColors(blob),
+  const { update, mapping, chosenOrder } = await runBulkForSvg(
+    blob,
     pool,
     renderPool,
+    mixingMode,
+    autoOrder,
     increments,
     lambda,
-  )) {
-    update.set(key, color);
-    mapping.set(key, opac);
-  }
+    onProgress,
+  );
+  onProgress?.(SVG_UPDATE_END);
   const updaters = [
     previewUpdater(update),
     ...separationUpdaters(mapping, pool.length),
   ];
   const [preview, ...separations] = await updateColors(blob, updaters);
-  return { preview, separations };
+  onProgress?.(1);
+  return { preview, separations, chosenOrder };
 }
 
-function tintSeparation(
-  img: HTMLImageElement,
-  color: ColorSpaceObject,
-): OffscreenCanvas {
+function tintSeparation(img: HTMLImageElement, color: RgbU32): OffscreenCanvas {
   const width = img.naturalWidth;
   const height = img.naturalHeight;
   const canvas = new OffscreenCanvas(width, height);
   const ctx = canvas.getContext("2d")!;
   ctx.drawImage(img, 0, 0);
   const imgData = ctx.getImageData(0, 0, width, height);
-  const { r: pr, g: pg, b: pb } = color.rgb();
+  const { r: pr, g: pg, b: pb } = unpackRgb(color);
   const data = imgData.data;
   for (let i = 0; i < data.length; i += 4) {
     const opacity = (255 - data[i]) / 255;
@@ -308,7 +396,7 @@ function tintSeparation(
 
 export async function genGrid(
   separations: readonly Blob[],
-  colors: readonly ColorSpaceObject[],
+  colors: readonly RgbU32[],
 ): Promise<Blob> {
   const urls = separations.map((sep) => URL.createObjectURL(sep));
   try {
@@ -351,29 +439,44 @@ export async function genGrid(
 
 export async function genSeparation(
   blob: Blob,
-  pool: readonly ColorSpaceObject[],
+  pool: readonly RgbU32[],
+  mixingMode: MixingMode,
+  autoOrder: boolean,
   increments: number,
   lambda: number,
-): Promise<readonly Blob[]> {
+  onProgress?: (frac: number) => void,
+): Promise<{
+  separations: readonly Blob[];
+  chosenOrder: readonly number[];
+}> {
   if (isRaster(blob.type)) {
-    const { separations } = await rasterPipeline(
+    const { separations, chosenOrder } = await rasterPipeline(
       blob,
       pool,
       pool,
+      mixingMode,
+      autoOrder,
       increments,
       lambda,
+      onProgress,
     );
-    return separations;
+    return { separations, chosenOrder };
   }
-  const mapping = new Map<RgbU32, number[]>();
-  for await (const [key, , opac] of bulkColorSeparation(
-    extractColors(blob),
+  const { mapping, chosenOrder } = await runBulkForSvg(
+    blob,
     pool,
     pool,
+    mixingMode,
+    autoOrder,
     increments,
     lambda,
-  )) {
-    mapping.set(key, opac);
-  }
-  return await updateColors(blob, separationUpdaters(mapping, pool.length));
+    onProgress,
+  );
+  onProgress?.(SVG_UPDATE_END);
+  const separations = await updateColors(
+    blob,
+    separationUpdaters(mapping, pool.length),
+  );
+  onProgress?.(1);
+  return { separations, chosenOrder };
 }
