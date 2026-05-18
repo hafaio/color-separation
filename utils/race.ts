@@ -19,7 +19,7 @@
  * naturally.
  */
 
-import { type RgbU32, rgbToD3 } from "./color";
+import { type RgbU32, rgbToCulori } from "./color";
 import {
   buildKmCache,
   colorSeparation,
@@ -42,7 +42,7 @@ export function findAutoOrder(
   const n = pool.length;
   if (n <= 1 || n > AUTO_PERM_CAP) return identity(n);
 
-  const colorObjs = pool.map(rgbToD3);
+  const colorObjs = pool.map(rgbToCulori);
   const perms = permutations(n);
   const permPools = perms.map((p) => p.map((i) => colorObjs[i]));
   const permLayers = layers
@@ -66,7 +66,7 @@ export function findAutoOrder(
       : undefined;
   const targets = [...colorCounts.entries()]
     .sort(([, a], [, b]) => b - a)
-    .map(([rgb, count]) => ({ obj: rgbToD3(rgb), count }));
+    .map(([rgb, count]) => ({ obj: rgbToCulori(rgb), count }));
   const totalMass = targets.reduce((s, t) => s + t.count, 0);
   const massThreshold = MASS_FRACTION * totalMass;
 

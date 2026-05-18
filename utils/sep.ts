@@ -10,15 +10,21 @@
  *   model layered on single-constant K-M, with optional fluorescence.
  */
 
-import type { ColorSpaceObject } from "d3-color";
-import * as d3color from "d3-color";
+import type { Color, Rgb } from "culori";
 import {
   type ConstraintBound,
   type SolveResult,
   default as solver,
   type VariableCoefficients,
 } from "javascript-lp-solver";
-import { type LinearRgb, linearToRgb, packRgb, rgbToLinear } from "./color";
+import {
+  bytesToRgb,
+  byteToLinear,
+  colorBytes,
+  type LinearRgb,
+  linearToRgb,
+  rgbToCulori,
+} from "./color";
 import { goldenMin, gridSearch, multiStartCoordDescent } from "./optimize";
 import {
   ndForward,
@@ -59,7 +65,7 @@ export function isMixingMode(value: string): value is MixingMode {
 
 export interface Result {
   error: number;
-  color: ColorSpaceObject;
+  color: Rgb;
   opacities: number[];
 }
 
@@ -72,18 +78,13 @@ const ALPHA_CONVERGE = 1e-5; // per-sweep improvement floor
 const ALPHA_LAMBDA_SCALE = 0.1; // λ slider [0,1] → effective L1 weight
 const ALPHA_GRID_BUDGET = 5000; // (increments+1)^N cap for exhaustive grid
 
-function linearize(c: ColorSpaceObject): LinearRgb {
-  const { r, g, b } = c.rgb();
-  return rgbToLinear(packRgb(r, g, b));
+function linearize(c: Color): LinearRgb {
+  const { r, g, b } = colorBytes(c);
+  return [byteToLinear(r), byteToLinear(g), byteToLinear(b)];
 }
 
-function delinearize(lin: LinearRgb): ColorSpaceObject {
-  const packed = linearToRgb(lin);
-  return d3color.rgb(
-    (packed >> 16) & 0xff,
-    (packed >> 8) & 0xff,
-    packed & 0xff,
-  );
+function delinearize(lin: LinearRgb): Rgb {
+  return rgbToCulori(linearToRgb(lin));
 }
 
 /** Alpha-over forward pass starting from paper white (1,1,1) in linear sRGB. */
@@ -138,8 +139,8 @@ function updateAlpha(
 }
 
 function alphaColorSeparation(
-  target: ColorSpaceObject,
-  pool: readonly ColorSpaceObject[],
+  target: Color,
+  pool: readonly Color[],
   { increments, lambda }: { increments: number; lambda: number },
 ): Result {
   const targetLin = linearize(target);
@@ -175,8 +176,8 @@ function alphaColorSeparation(
 
 function alphaCompose(
   opacities: readonly number[],
-  pool: readonly ColorSpaceObject[],
-): ColorSpaceObject {
+  pool: readonly Color[],
+): Rgb {
   return delinearize(alphaForward(opacities, pool.map(linearize)));
 }
 
@@ -195,7 +196,7 @@ function kmForwardLinear(
 }
 
 function kmColorSeparation(
-  target: ColorSpaceObject,
+  target: Color,
   n: number,
   cache: KmCache,
   { increments, lambda }: { increments: number; lambda: number },
@@ -236,12 +237,9 @@ function kmColorSeparation(
   return { error, opacities, color: kmCompose(opacities, cache) };
 }
 
-function kmCompose(
-  opacities: readonly number[],
-  cache: KmCache,
-): ColorSpaceObject {
+function kmCompose(opacities: readonly number[], cache: KmCache): Rgb {
   const [r, g, b] = spectrumToSrgb(ndForward(opacities, cache.primaries));
-  return d3color.rgb(r, g, b);
+  return bytesToRgb(r, g, b);
 }
 
 interface CommonSepOpts {
@@ -276,8 +274,8 @@ export type SeparationOptions =
  * pre-stacked spectral primaries instead).
  */
 export function colorSeparation(
-  target: ColorSpaceObject,
-  pool: readonly ColorSpaceObject[],
+  target: Color,
+  pool: readonly Color[],
   opts: SeparationOptions = { mode: "subtractive" },
 ): Result {
   const increments = opts.increments ?? 0;
@@ -295,12 +293,12 @@ export function colorSeparation(
 }
 
 function subtractiveColorSeparation(
-  target: ColorSpaceObject,
-  pool: readonly ColorSpaceObject[],
+  target: Color,
+  pool: readonly Color[],
   { increments, lambda }: { increments: number; lambda: number },
 ): Result {
-  const rgbTarget = target.rgb();
-  const rgbPool = pool.map((color) => color.rgb());
+  const rgbTarget = colorBytes(target);
+  const rgbPool = pool.map(colorBytes);
 
   const mult = Math.max(increments, 1);
   const tieBreak = 1e-7;
@@ -391,7 +389,7 @@ function subtractiveColorSeparation(
   return {
     error,
     opacities,
-    color: subtractiveCompose(opacities, rgbPool),
+    color: subtractiveCompose(opacities, pool),
   };
 }
 
@@ -407,27 +405,35 @@ export type ComposeOptions =
 
 export function composeColors(
   opacities: readonly number[],
-  pool: readonly ColorSpaceObject[],
+  pool: readonly Color[],
   opts: ComposeOptions = { mode: "subtractive" },
-): ColorSpaceObject {
+): Rgb {
   if (opts.mode === "kubelka_munk") return kmCompose(opacities, opts.cache);
   if (opts.mode === "alpha_blend") return alphaCompose(opacities, pool);
   return subtractiveCompose(opacities, pool);
 }
 
+const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
+
 function subtractiveCompose(
   opacities: readonly number[],
-  pool: readonly ColorSpaceObject[],
-): ColorSpaceObject {
-  const rgbPool = pool.map((color) => color.rgb());
+  pool: readonly Color[],
+): Rgb {
+  const rgbPool = pool.map(colorBytes);
   const total = opacities.reduce((t, o) => t + o, 0);
-  const init = 255 * (1 - total);
-  const closest = d3color.rgb(init, init, init);
+  let r = 255 * (1 - total);
+  let g = r;
+  let b = r;
   for (const [i, color] of rgbPool.entries()) {
     const opacity = opacities[i];
-    for (const prop of ["r", "g", "b"] as const) {
-      closest[prop] += color[prop] * opacity;
-    }
+    r += color.r * opacity;
+    g += color.g * opacity;
+    b += color.b * opacity;
   }
-  return closest.clamp();
+  return {
+    mode: "rgb",
+    r: clamp01(r / 255),
+    g: clamp01(g / 255),
+    b: clamp01(b / 255),
+  };
 }

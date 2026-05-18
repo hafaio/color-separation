@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test";
-import { hexToRgb } from "./color";
 import {
   buildLayer,
   calibrateKScale,
@@ -51,9 +50,4 @@ test("default riso 6 are KM eligible", async () => {
     expect(ink).toBeDefined();
     if (ink) expect(ink.kmEligible).toBe(true);
   }
-});
-
-test("hexToRgb is unused but referenced for type completeness", () => {
-  // Tighten import shape; calibration uses hex strings via d3color internally.
-  expect(hexToRgb("#ff0000")).toBeGreaterThan(0);
 });

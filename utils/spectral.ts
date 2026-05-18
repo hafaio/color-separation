@@ -14,8 +14,8 @@
  *   attenuated by the layers above it.
  */
 
-import * as d3color from "d3-color";
-import { srgbEncode } from "./color";
+import { differenceCiede2000 } from "culori";
+import { bytesToRgb, hexToRgb, srgbEncode, unpackRgb } from "./color";
 import { goldenMin } from "./optimize";
 
 export interface KBand {
@@ -366,15 +366,16 @@ export function spectrumToSrgb(r: Float64Array): [number, number, number] {
   ];
 }
 
-/** CIE 1976 (Lab) ΔE between two sRGB colors. */
+const deltaECiede2000 = differenceCiede2000();
+
+/** CIE ΔE2000 between two sRGB colors (0..255 components). */
 function deltaELab(
   a: readonly [number, number, number],
   b: readonly [number, number, number],
 ): number {
-  const la = d3color.lab(d3color.rgb(a[0], a[1], a[2]));
-  const lb = d3color.lab(d3color.rgb(b[0], b[1], b[2]));
-  return Math.sqrt(
-    (la.l - lb.l) ** 2 + (la.a - lb.a) ** 2 + (la.b - lb.b) ** 2,
+  return deltaECiede2000(
+    bytesToRgb(a[0], a[1], a[2]),
+    bytesToRgb(b[0], b[1], b[2]),
   );
 }
 
@@ -408,10 +409,8 @@ export interface Calibration {
  * after a coarse log-sweep on kScale to land in a sane basin.
  */
 export function calibrateKScale(hex: string, spec: LayerSpec): Calibration {
-  const targetRgb: [number, number, number] = (() => {
-    const c = d3color.rgb(hex);
-    return [c.r, c.g, c.b];
-  })();
+  const { r, g, b } = unpackRgb(hexToRgb(hex));
+  const targetRgb: [number, number, number] = [r, g, b];
 
   const initialAmps = spec.kBands?.map((b) => b.amplitude) ?? [];
 

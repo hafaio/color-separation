@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
-import { rgb } from "d3-color";
-import { rgbToD3 } from "./color";
+import { bytesToRgb, colorBytes, rgbToCulori } from "./color";
 import { INKS_BY_ID, RISO_DEFAULTS } from "./inks";
 import {
   buildKmCache,
@@ -14,7 +13,7 @@ import { buildLayer } from "./spectral";
 const inks = RISO_DEFAULTS.map((id) => INKS_BY_ID.get(id)!);
 const layers = inks.map(buildLayer);
 const kmCache = buildKmCache(layers);
-const pool = inks.map((ink) => rgbToD3(ink.rgb));
+const pool = inks.map((ink) => rgbToCulori(ink.rgb));
 
 // A spread of photo-typical colors. The point is to compare reconstruction
 // error across mixing modes on the SAME pool / SAME targets so a regression
@@ -56,9 +55,9 @@ function meanErrorFor(mode: MixingMode): number {
   const opts = optsFor(mode);
   let total = 0;
   for (const t of TARGETS) {
-    const target = rgb(t.r, t.g, t.b);
+    const target = bytesToRgb(t.r, t.g, t.b);
     const { opacities } = colorSeparation(target, pool, opts);
-    const composed = composeColors(opacities, pool, opts).rgb();
+    const composed = colorBytes(composeColors(opacities, pool, opts));
     total += srgbDist({ r: composed.r, g: composed.g, b: composed.b }, t);
   }
   return total / TARGETS.length;

@@ -1,7 +1,12 @@
-import type { ColorSpaceObject } from "d3-color";
-import * as d3color from "d3-color";
+import { type Color, formatRgb, parse } from "culori";
 import { bulkColorSeparation } from "./bulksep";
-import { packRgb, type RgbU32, unpackRgb } from "./color";
+import {
+  bytesToRgb,
+  colorBytes,
+  packRgb,
+  type RgbU32,
+  unpackRgb,
+} from "./color";
 import { blob2url, url2blob } from "./conversion";
 import type { MixingMode } from "./sep";
 import {
@@ -145,9 +150,9 @@ async function* extractColors(blob: Blob): AsyncIterableIterator<RgbU32> {
         for (const rule of elem.sheet?.cssRules ?? []) {
           if (rule instanceof CSSStyleRule) {
             for (const prop of COLOR_PROPS) {
-              const color = d3color.color(rule.style?.[prop]);
+              const color = parse(rule.style?.[prop]);
               if (color) {
-                const { r, g, b } = color.rgb();
+                const { r, g, b } = colorBytes(color);
                 yield packRgb(r, g, b);
               }
             }
@@ -160,9 +165,9 @@ async function* extractColors(blob: Blob): AsyncIterableIterator<RgbU32> {
         }
       } else if (elem instanceof SVGElement) {
         for (const prop of COLOR_PROPS) {
-          const color = d3color.color(elem.style?.[prop]);
+          const color = parse(elem.style?.[prop]);
           if (color) {
-            const { r, g, b } = color.rgb();
+            const { r, g, b } = colorBytes(color);
             yield packRgb(r, g, b);
           }
         }
@@ -175,7 +180,7 @@ async function* extractColors(blob: Blob): AsyncIterableIterator<RgbU32> {
 
 async function updateColors(
   blob: Blob,
-  updaters: readonly ((css: ColorSpaceObject) => ColorSpaceObject)[],
+  updaters: readonly ((css: Color) => Color)[],
 ): Promise<readonly Blob[]> {
   if (
     blob.type === "image/png" ||
@@ -196,10 +201,10 @@ async function updateColors(
       ctx.createImageData(width, height, { colorSpace: "srgb" }),
     );
     for (let i = 0; i < srcData.length; i += 4) {
-      const src = d3color.rgb(srcData[i], srcData[i + 1], srcData[i + 2]);
+      const src = bytesToRgb(srcData[i], srcData[i + 1], srcData[i + 2]);
       const alpha = srcData[i + 3];
       for (let j = 0; j < updaters.length; j++) {
-        const { r, g, b } = updaters[j](src).rgb();
+        const { r, g, b } = colorBytes(updaters[j](src));
         const out = outDatas[j].data;
         out[i] = r;
         out[i + 1] = g;
@@ -239,9 +244,9 @@ async function updateColors(
             for (const rule of rules) {
               if (rule instanceof CSSStyleRule) {
                 for (const prop of COLOR_PROPS) {
-                  const init = d3color.color(rule.style?.[prop]);
+                  const init = parse(rule.style?.[prop]);
                   if (init) {
-                    rule.style[prop] = update(init).toString();
+                    rule.style[prop] = formatRgb(update(init));
                   }
                 }
               }
@@ -252,9 +257,9 @@ async function updateColors(
             imgIdx++;
           } else if (elem instanceof SVGElement) {
             for (const prop of COLOR_PROPS) {
-              const init = d3color.color(elem.style[prop]);
+              const init = parse(elem.style[prop]);
               if (init) {
-                elem.style[prop] = update(init).toString();
+                elem.style[prop] = formatRgb(update(init));
               }
             }
           }
@@ -271,23 +276,24 @@ async function updateColors(
 
 function previewUpdater(
   update: ReadonlyMap<RgbU32, RgbU32>,
-): (orig: ColorSpaceObject) => ColorSpaceObject {
+): (orig: Color) => Color {
   return (orig) => {
-    const { r: sr, g: sg, b: sb } = orig.rgb();
+    const { r: sr, g: sg, b: sb, alpha } = colorBytes(orig);
     const { r, g, b } = unpackRgb(update.get(packRgb(sr, sg, sb))!);
-    return d3color.rgb(r, g, b, orig.opacity);
+    return bytesToRgb(r, g, b, alpha);
   };
 }
 
 function separationUpdaters(
   mapping: ReadonlyMap<RgbU32, number[]>,
   poolSize: number,
-): readonly ((orig: ColorSpaceObject) => ColorSpaceObject)[] {
+): readonly ((orig: Color) => Color)[] {
   return Array.from({ length: poolSize }, (_, ind) => {
-    return (orig: ColorSpaceObject) => {
-      const { r: sr, g: sg, b: sb } = orig.rgb();
+    return (orig: Color): Color => {
+      const { r: sr, g: sg, b: sb, alpha } = colorBytes(orig);
       const opacity = mapping.get(packRgb(sr, sg, sb))![ind];
-      return d3color.gray((1 - opacity) * 100).copy({ opacity: orig.opacity });
+      const v = 1 - opacity;
+      return { mode: "rgb", r: v, g: v, b: v, alpha };
     };
   });
 }

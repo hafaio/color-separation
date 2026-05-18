@@ -5,7 +5,7 @@
  * stop drifting apart.
  */
 
-import { packRgb, type RgbU32, rgbToD3 } from "./color";
+import { culoriToPacked, type RgbU32, rgbToCulori } from "./color";
 import { INKS_BY_RGB } from "./inks";
 import { findAutoOrder } from "./race";
 import {
@@ -27,8 +27,8 @@ export interface SolverContext {
   readonly chosenOrder: number[];
   readonly pool: RgbU32[];
   readonly renderPool: RgbU32[];
-  readonly poolColors: ReturnType<typeof rgbToD3>[];
-  readonly renderColors: ReturnType<typeof rgbToD3>[];
+  readonly poolColors: ReturnType<typeof rgbToCulori>[];
+  readonly renderColors: ReturnType<typeof rgbToCulori>[];
   readonly sepOpts: SeparationOptions;
   readonly composeOpts: ComposeOptions;
 }
@@ -59,8 +59,8 @@ export function buildSolverContext(
 
   const pool = chosenOrder.map((i) => poolArr[i]);
   const renderPool = chosenOrder.map((i) => renderArr[i]);
-  const poolColors = pool.map(rgbToD3);
-  const renderColors = renderPool.map(rgbToD3);
+  const poolColors = pool.map(rgbToCulori);
+  const renderColors = renderPool.map(rgbToCulori);
   const layers = chosenOrder.map((i) => baseLayers[i]);
   const renderLayers = renderPool.map(layerFor);
 
@@ -108,16 +108,13 @@ export function solveColors(
   let i = 0;
   for (const key of keys) {
     const { opacities } = colorSeparation(
-      rgbToD3(key),
+      rgbToCulori(key),
       ctx.poolColors,
       ctx.sepOpts,
     );
-    const { r, g, b } = composeColors(
-      opacities,
-      ctx.renderColors,
-      ctx.composeOpts,
-    ).rgb();
-    prevs[i] = packRgb(r, g, b);
+    prevs[i] = culoriToPacked(
+      composeColors(opacities, ctx.renderColors, ctx.composeOpts),
+    );
     opacs.set(opacities, i * n);
     i++;
     if (i % batch === 0 || i === total) {
