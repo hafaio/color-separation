@@ -17,6 +17,7 @@ import { type FileRejection, useDropzone } from "react-dropzone";
 import { luminance, type RgbU32 } from "../utils/color";
 import { blob2url, resizeBlob, url2blob } from "../utils/conversion";
 import { INKS_BY_ID, INKS_BY_RGB, RISO_DEFAULTS } from "../utils/inks";
+import { LruMap } from "../utils/lru";
 import type { MixingMode } from "../utils/sep";
 import {
   genGrid,
@@ -69,6 +70,34 @@ function sameActive(
   return true;
 }
 
+// Ephemeral, in-memory only (never localStorage); cleared on every upload.
+// Each entry is preview + grid data URLs at viewport resolution; posterized
+// separations compress well, so ~1-2 MB/entry typical (grid-dominated). 64
+// keeps the cache near ~100 MB worst-case — fine for a desktop tool, and a
+// miss only costs a recompute.
+const RENDER_CACHE_MAX = 64;
+
+interface RenderCacheEntry {
+  readonly preview: string;
+  readonly grid: string;
+  readonly autoChosen: readonly RgbU32[] | undefined;
+}
+
+// Captures everything the render output depends on; mirrors the render
+// effect's dependency set (the image is constant per cache lifetime).
+function renderKey(
+  orderedActive: readonly [RgbU32, ColorState][],
+  mixingMode: MixingMode,
+  ordering: Ordering,
+  increments: number,
+  lambda: number,
+): string {
+  const pool = orderedActive
+    .map(([rgb, state]) => `${rgb}:${state.remap ?? ""}`)
+    .join(",");
+  return `${mixingMode}|${ordering}|${increments}|${lambda}|${pool}`;
+}
+
 export default function App(): ReactElement {
   const [showRaw, setShowRaw] = useState(false);
   const [showGrid, setShowGrid] = useState(false);
@@ -81,6 +110,9 @@ export default function App(): ReactElement {
     setShowHelp(!showHelp);
   }, [showHelp]);
   const imgBox = useRef(null);
+  const renderCache = useRef(
+    new LruMap<string, RenderCacheEntry>(RENDER_CACHE_MAX),
+  );
 
   const [parsed, setParsed] = useState<Parsed | undefined | null>();
   const [ordering, setOrdering] = useState<Ordering>("light-to-dark");
@@ -230,6 +262,21 @@ export default function App(): ReactElement {
       setGrid(undefined);
       return;
     }
+    const key = renderKey(
+      orderedActive,
+      mixingMode,
+      ordering,
+      increments,
+      lambda,
+    );
+    const cached = renderCache.current.get(key);
+    if (cached) {
+      setPreview(cached.preview);
+      setGrid(cached.grid);
+      setAutoChosen(cached.autoChosen);
+      setRendering(false);
+      return;
+    }
     const autoOrder = ordering === "auto";
     let cancelled = false;
     // Skip state updates for sub-1% deltas so React doesn't reconcile the
@@ -268,12 +315,20 @@ export default function App(): ReactElement {
           blob2url(previewBlob),
           blob2url(gridBlob),
         ]);
+        const entry: RenderCacheEntry = {
+          preview: previewUrl,
+          grid: gridUrl,
+          autoChosen: autoOrder
+            ? chosenOrder.map((idx) => pool[idx])
+            : undefined,
+        };
+        // Cache even when cancelled: the worker ran to completion regardless,
+        // so banking the result lets the user return to this config instantly.
+        renderCache.current.set(key, entry);
         if (!cancelled) {
-          setPreview(previewUrl);
-          setGrid(gridUrl);
-          setAutoChosen(
-            autoOrder ? chosenOrder.map((idx) => pool[idx]) : undefined,
-          );
+          setPreview(entry.preview);
+          setGrid(entry.grid);
+          setAutoChosen(entry.autoChosen);
         }
       } catch (ex) {
         console.error(ex);
@@ -355,6 +410,7 @@ export default function App(): ReactElement {
         setParsed(null);
         setShowHelp(false);
         modifyColors({ action: "clear" });
+        renderCache.current.clear();
 
         const { clientWidth, clientHeight } = imgBox.current!;
         const blob = await resizeBlob(file, clientWidth, clientHeight);
