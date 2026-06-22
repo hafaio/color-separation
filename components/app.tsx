@@ -16,6 +16,7 @@ import {
 import { type FileRejection, useDropzone } from "react-dropzone";
 import { luminance, type RgbU32 } from "../utils/color";
 import { blob2url, resizeBlob, url2blob } from "../utils/conversion";
+import { type CustomColor, useCustomColors } from "../utils/custom-colors";
 import { INKS_BY_ID, INKS_BY_RGB, RISO_DEFAULTS } from "../utils/inks";
 import { LruMap } from "../utils/lru";
 import type { MixingMode } from "../utils/sep";
@@ -114,6 +115,8 @@ export default function App(): ReactElement {
     new LruMap<string, RenderCacheEntry>(RENDER_CACHE_MAX),
   );
 
+  const { customs, addCustom, removeCustom } = useCustomColors();
+
   const [parsed, setParsed] = useState<Parsed | undefined | null>();
   const [ordering, setOrdering] = useState<Ordering>("light-to-dark");
   const [mixingMode, setMixingMode] = useState<MixingMode>("subtractive");
@@ -196,17 +199,13 @@ export default function App(): ReactElement {
     orderedActiveRef.current = next;
     return next;
   }, [colors, ordering]);
-  // Inks that aren't KM-eligible by virtue of bad calibration.
+  // Active colors that can't be rendered in KM mode — either a known ink
+  // whose calibration failed, or a custom color with no spectral data.
   const kmIneligibleNames = useMemo(
     () =>
       orderedActive
-        .map(([rgb, state]) => ({
-          rgb,
-          state,
-          ink: INKS_BY_RGB.get(rgb),
-        }))
-        .filter((e) => e.ink && !e.ink.kmEligible)
-        .map((e) => e.state.name),
+        .filter(([rgb]) => !(INKS_BY_RGB.get(rgb)?.kmEligible ?? false))
+        .map(([, state]) => state.name),
     [orderedActive],
   );
   const kmAvailable = kmIneligibleNames.length === 0;
@@ -404,6 +403,23 @@ export default function App(): ReactElement {
     }
   }, [parsed, orderedActive, mixingMode, ordering, increments, lambda]);
 
+  const saveCustom = useCallback(
+    (color: CustomColor) => {
+      // The add form already rejects colors that collide with a Riso ink or an
+      // existing custom, so the rgb is guaranteed new here.
+      addCustom(color);
+      modifyColors({ action: "add", color: color.rgb, name: color.name });
+    },
+    [addCustom],
+  );
+  const deleteCustom = useCallback(
+    (rgb: RgbU32) => {
+      removeCustom(rgb);
+      if (colors.has(rgb)) modifyColors({ action: "remove", color: rgb });
+    },
+    [removeCustom, colors],
+  );
+
   const onUpload = useCallback((file: File) => {
     void (async () => {
       try {
@@ -432,6 +448,9 @@ export default function App(): ReactElement {
       <Editor
         colors={colors}
         modifyColors={modifyColors}
+        customs={customs}
+        saveCustom={saveCustom}
+        deleteCustom={deleteCustom}
         positions={positions}
         ordering={ordering}
         setOrdering={setOrdering}
@@ -461,7 +480,8 @@ export default function App(): ReactElement {
     <Image
       src={src}
       alt="rendered separation"
-      className="h-full w-full object-contain"
+      className="h-full w-full object-contain select-none"
+      draggable={false}
       width="1"
       height="1"
     />

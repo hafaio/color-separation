@@ -30,7 +30,7 @@ export default function ColorPicker({
       palette={palette}
       active={active}
       position={positions.get(color)}
-      kmEligible={INKS_BY_RGB.get(color)?.kmEligible ?? true}
+      kmEligible={INKS_BY_RGB.get(color)?.kmEligible ?? false}
       muted={muted}
       key={color}
     />
