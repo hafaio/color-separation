@@ -97,8 +97,9 @@ export default function ColorButton({
         type="button"
         title={tooltipLabel}
       >
-        {ineligible}
-        {badge}
+        {/* When active the position number already occupies the center, so the
+            KM-ineligible dot would just clutter it — show the number alone. */}
+        {badge ?? ineligible}
       </Menu.ContextTrigger>
       <Menu.Positioner>
         <Menu.Content className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded shadow-lg p-1 z-50 focus:outline-none">

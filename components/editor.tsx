@@ -8,6 +8,7 @@ import {
 } from "react";
 import { FaFileDownload } from "react-icons/fa";
 import type { RgbU32 } from "../utils/color";
+import type { CustomColor } from "../utils/custom-colors";
 import { isMixingMode, type MixingMode } from "../utils/sep";
 import { type ColorState, isOrdering, type Ordering } from "../utils/types";
 import ColorPicker from "./color-picker";
@@ -27,6 +28,9 @@ function EditorHeader({ children }: PropsWithChildren): ReactElement {
 export default function Editor({
   colors,
   modifyColors,
+  customs,
+  saveCustom,
+  deleteCustom,
   positions,
   ordering,
   setOrdering,
@@ -46,6 +50,9 @@ export default function Editor({
 }: {
   colors: Map<RgbU32, ColorState>;
   modifyColors: (action: Action) => void;
+  customs: readonly CustomColor[];
+  saveCustom: (color: CustomColor) => void;
+  deleteCustom: (rgb: RgbU32) => void;
   positions: ReadonlyMap<RgbU32, number>;
   ordering: Ordering;
   setOrdering: (ordering: Ordering) => void;
@@ -220,6 +227,9 @@ export default function Editor({
           colors={colors}
           addColor={addColor}
           removeColor={removeColor}
+          customs={customs}
+          saveCustom={saveCustom}
+          deleteCustom={deleteCustom}
         />
         <EditorHeader>Discretizations</EditorHeader>
         <p className="text-slate-600 dark:text-slate-400">

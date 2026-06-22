@@ -20,14 +20,20 @@ export default function HelpText({
         <ol className="list-decimal ml-4 space-y-1">
           <li>Upload an image by clicking above or dropping it anywhere.</li>
           <li>
-            Open the palette to add or remove inks. Inks without a dot are
-            spectrally calibrated and can use Kubelka–Munk mixing; inks with a
-            white center dot fall back to alpha-blend mixing.
+            Open the palette to add or remove colors. Riso inks without a dot
+            are spectrally calibrated and can use Kubelka–Munk mixing; inks with
+            a white center dot fall back to alpha-blend mixing.
           </li>
           <li>
-            Toggle inks in the picker. Right-click an active ink to remap any
-            color routed to it onto another active ink — useful for collapsing
-            two close pool colors without re-running the solver.
+            Add your own color with the <span className="font-medium">+</span>{" "}
+            tile: pick a swatch and name it. Custom colors aren't spectrally
+            calibrated, so they use alpha-blend mixing. Right-click a custom
+            color to delete it.
+          </li>
+          <li>
+            Toggle colors in the picker. Right-click an active color to remap
+            any color routed to it onto another active one — useful for
+            collapsing two close pool colors without re-running the solver.
           </li>
           <li>Pick a mixing model and print order, then export.</li>
         </ol>
