@@ -1,6 +1,8 @@
 import type { RgbU32 } from "./color";
 import type { MixingMode } from "./sep";
 
+export const SOLVER_FRACTION = 0.95;
+
 export interface Message {
   readonly colors: ReadonlyMap<RgbU32, number>;
   readonly pool: Uint32Array;
@@ -20,18 +22,13 @@ interface Success {
   readonly typ: "success";
   readonly prevs: Uint32Array;
   readonly opacs: Float64Array;
-  /** Permutation of input pool indices; identity if no auto-order ran. */
   readonly chosenOrder: readonly number[];
 }
 
-/** Fraction of work done in [0, 1]; posted periodically during the solver. */
 export interface Progress {
   readonly typ: "progress";
   readonly value: number;
 }
-
-// Render budget split: solver gets this fraction; trailing I/O the rest.
-export const SOLVER_FRACTION = 0.95;
 
 export type Result = Err | Success;
 export type WorkerOut = Result | Progress;
@@ -45,6 +42,7 @@ export interface RasterMessage {
   readonly increments: number;
   readonly lambda: number;
   readonly outputType: string;
+  readonly grayscale: boolean;
 }
 
 interface RasterSuccess {
@@ -56,3 +54,20 @@ interface RasterSuccess {
 
 export type RasterResult = Err | RasterSuccess;
 export type RasterWorkerOut = RasterResult | Progress;
+
+// Off-main-thread encode requests (SVG export path). `id` correlates each
+// response to its request since several encodes are in flight at once.
+export interface EncodeRequest {
+  readonly id: number;
+  readonly data: Uint8ClampedArray;
+  readonly width: number;
+  readonly height: number;
+  readonly type: string;
+  readonly grayscale: boolean;
+}
+
+export interface EncodeResponse {
+  readonly id: number;
+  readonly blob?: Blob;
+  readonly error?: string;
+}

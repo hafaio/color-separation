@@ -1,4 +1,5 @@
 import { packRgb, type RgbU32 } from "./color";
+import { encodeImage } from "./encode-image";
 import { buildSolverContext, solveColors } from "./solver-context";
 import {
   type RasterMessage,
@@ -21,6 +22,7 @@ async function run(message: RasterMessage): Promise<void> {
       increments,
       lambda,
       outputType,
+      grayscale,
     } = message;
     const numChannels = pool.length;
     const numOutputs = 1 + numChannels;
@@ -89,17 +91,9 @@ async function run(message: RasterMessage): Promise<void> {
       cIdx++;
     }
 
-    const outCanvases: OffscreenCanvas[] = [];
-    const outCtxs: OffscreenCanvasRenderingContext2D[] = [];
     const outDatas: ImageData[] = [];
     for (let j = 0; j < numOutputs; j++) {
-      const canvas = new OffscreenCanvas(width, height);
-      const ctx2d = canvas.getContext("2d")!;
-      outCanvases.push(canvas);
-      outCtxs.push(ctx2d);
-      outDatas.push(
-        ctx2d.createImageData(width, height, { colorSpace: "srgb" }),
-      );
+      outDatas.push(new ImageData(width, height, { colorSpace: "srgb" }));
     }
 
     for (let i = 0; i < srcData.length; i += 4) {
@@ -116,22 +110,20 @@ async function run(message: RasterMessage): Promise<void> {
       }
     }
 
-    for (let j = 0; j < numOutputs; j++) {
-      outCtxs[j].putImageData(outDatas[j], 0, 0);
-    }
     // Split the trailing budget: ~40% for pixel write, ~60% for per-channel
     // blob encoding (the heavier phase).
     const trailing = 1 - SOLVER_FRACTION;
     const pixelEnd = SOLVER_FRACTION + trailing * 0.4;
     const blobEnd = 1;
     postMessage({ typ: "progress", value: pixelEnd });
-    // Encode all blobs in parallel — convertToBlob runs off the JS thread —
-    // and report progress as each individually resolves.
+    // Encode all blobs in parallel and report progress as each resolves. The
+    // preview (index 0) is full colour; only the per-channel separations are
+    // grayscale, so the grayscale colour space only applies to index > 0.
     let done = 0;
-    const step = (blobEnd - pixelEnd) / outCanvases.length;
+    const step = (blobEnd - pixelEnd) / outDatas.length;
     const blobs = await Promise.all(
-      outCanvases.map((canvas) =>
-        canvas.convertToBlob({ type: outputType }).then((blob) => {
+      outDatas.map((data, j) =>
+        encodeImage(data, outputType, grayscale && j > 0).then((blob) => {
           done++;
           postMessage({ typ: "progress", value: pixelEnd + step * done });
           return blob;

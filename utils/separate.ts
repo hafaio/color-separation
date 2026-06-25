@@ -8,6 +8,7 @@ import {
   unpackRgb,
 } from "./color";
 import { blob2url, url2blob } from "./conversion";
+import { encodeImageOffMainThread } from "./encode-client";
 import type { MixingMode } from "./sep";
 import {
   type RasterMessage,
@@ -80,6 +81,7 @@ async function rasterPipeline(
   autoOrder: boolean,
   increments: number,
   lambda: number,
+  grayscale: boolean,
   onProgress?: (frac: number) => void,
 ): Promise<{
   preview: Blob;
@@ -97,6 +99,7 @@ async function rasterPipeline(
     increments,
     lambda,
     outputType: blob.type,
+    grayscale,
   };
   const worker = new Worker(new URL("./raster-worker.ts", import.meta.url));
   const result = await new Promise<RasterResult>((resolve) => {
@@ -181,6 +184,7 @@ async function* extractColors(blob: Blob): AsyncIterableIterator<RgbU32> {
 async function updateColors(
   blob: Blob,
   updaters: readonly ((css: Color) => Color)[],
+  grayscale: boolean,
 ): Promise<readonly Blob[]> {
   if (
     blob.type === "image/png" ||
@@ -195,10 +199,8 @@ async function updateColors(
     const srcData = srcCtx.getImageData(0, 0, width, height, {
       colorSpace: "srgb",
     }).data;
-    const outCanvases = updaters.map(() => new OffscreenCanvas(width, height));
-    const outCtxs = outCanvases.map((canvas) => canvas.getContext("2d")!);
-    const outDatas = outCtxs.map((ctx) =>
-      ctx.createImageData(width, height, { colorSpace: "srgb" }),
+    const outDatas = updaters.map(
+      () => new ImageData(width, height, { colorSpace: "srgb" }),
     );
     for (let i = 0; i < srcData.length; i += 4) {
       const src = bytesToRgb(srcData[i], srcData[i + 1], srcData[i + 2]);
@@ -212,11 +214,10 @@ async function updateColors(
         out[i + 3] = alpha;
       }
     }
-    for (let j = 0; j < outCtxs.length; j++) {
-      outCtxs[j].putImageData(outDatas[j], 0, 0);
-    }
     return await Promise.all(
-      outCanvases.map((canvas) => canvas.convertToBlob({ type: blob.type })),
+      outDatas.map((data) =>
+        encodeImageOffMainThread(data, blob.type, grayscale),
+      ),
     );
   } else if (blob.type === "image/svg+xml") {
     const text = await blob.text();
@@ -229,7 +230,7 @@ async function updateColors(
     const processedImages = await Promise.all(
       imageElements.map(async (elem) => {
         const href = await url2blob(elem.href.baseVal);
-        const blobs = await updateColors(href, updaters);
+        const blobs = await updateColors(href, updaters, grayscale);
         return await Promise.all(blobs.map(blob2url));
       }),
     );
@@ -316,6 +317,7 @@ export async function genPreview(
       autoOrder,
       increments,
       lambda,
+      false,
     );
     return preview;
   }
@@ -331,7 +333,7 @@ export async function genPreview(
   )) {
     update.set(key, color);
   }
-  const [out] = await updateColors(blob, [previewUpdater(update)]);
+  const [out] = await updateColors(blob, [previewUpdater(update)], false);
   return out;
 }
 
@@ -358,6 +360,7 @@ export async function genPreviewAndSeparation(
       autoOrder,
       increments,
       lambda,
+      false,
       onProgress,
     );
   }
@@ -376,7 +379,7 @@ export async function genPreviewAndSeparation(
     previewUpdater(update),
     ...separationUpdaters(mapping, pool.length),
   ];
-  const [preview, ...separations] = await updateColors(blob, updaters);
+  const [preview, ...separations] = await updateColors(blob, updaters, false);
   onProgress?.(1);
   return { preview, separations, chosenOrder };
 }
@@ -450,6 +453,7 @@ export async function genSeparation(
   autoOrder: boolean,
   increments: number,
   lambda: number,
+  grayscale: boolean,
   onProgress?: (frac: number) => void,
 ): Promise<{
   separations: readonly Blob[];
@@ -464,6 +468,7 @@ export async function genSeparation(
       autoOrder,
       increments,
       lambda,
+      grayscale,
       onProgress,
     );
     return { separations, chosenOrder };
@@ -482,6 +487,7 @@ export async function genSeparation(
   const separations = await updateColors(
     blob,
     separationUpdaters(mapping, pool.length),
+    grayscale,
   );
   onProgress?.(1);
   return { separations, chosenOrder };
