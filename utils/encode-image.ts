@@ -29,17 +29,16 @@ function ensureOxipng(): Promise<unknown> {
 }
 
 /**
- * Encode pixels to a blob of `type`. With `grayscale` and a type that has a
- * grayscale colour space — PNG (oxipng reduction) or JPEG (mozjpeg) — the
- * single-channel encoder is used: identical output, far smaller. WebP and the
- * toggle-off path use the canvas encoder, unchanged.
+ * Encode single-channel separation pixels in a grayscale colour space — PNG via
+ * oxipng's colour-type reduction, JPEG via mozjpeg — for output far smaller than
+ * the truecolor canvas encoder. Callers only route grayscale PNG/JPEG here; WebP
+ * and the non-grayscale path stay on the canvas encoder.
  */
-export async function encodeImage(
+export async function encodeGreyscale(
   image: ImageData,
-  type: string,
-  grayscale: boolean,
+  type: "image/png" | "image/jpeg",
 ): Promise<Blob> {
-  if (grayscale && type === "image/png") {
+  if (type === "image/png") {
     await ensureOxipng();
     const png = optimisePngRaw(
       image.data,
@@ -50,16 +49,12 @@ export async function encodeImage(
       false,
     );
     return new Blob([png as Uint8Array<ArrayBuffer>], { type });
-  } else if (grayscale && type === "image/jpeg") {
+  } else {
     await ensureJpeg();
     const jpeg = await encodeJpeg(image, {
       color_space: 1, // greyscale
       quality: 92, // browser default we use on other path
     });
     return new Blob([jpeg], { type });
-  } else {
-    const canvas = new OffscreenCanvas(image.width, image.height);
-    canvas.getContext("2d")!.putImageData(image, 0, 0);
-    return canvas.convertToBlob({ type });
   }
 }

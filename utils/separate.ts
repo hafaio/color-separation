@@ -5,20 +5,59 @@ import {
   colorBytes,
   packRgb,
   type RgbU32,
+  rgbToCulori,
   unpackRgb,
 } from "./color";
 import { blob2url, url2blob } from "./conversion";
-import { encodeImageOffMainThread } from "./encode-client";
+import { paintOutputs } from "./paint";
 import type { MixingMode } from "./sep";
 import {
+  createSender,
+  type EncodePayload,
   type RasterMessage,
-  type RasterResult,
-  type RasterWorkerOut,
+  type RasterOut,
   SOLVER_FRACTION,
-} from "./winterface";
+} from "./worker-rpc";
 
 // 40% of trailing budget for SVG `updateColors` finishing post-bulksep.
 const SVG_UPDATE_END = SOLVER_FRACTION + (1 - SOLVER_FRACTION) * 0.4;
+
+const runRaster = createSender<RasterMessage, RasterOut>(
+  () => new Worker(new URL("./raster-worker.ts", import.meta.url)),
+  {
+    transfer: ({ pool, renderPool }) => [
+      pool.buffer as ArrayBuffer,
+      renderPool.buffer as ArrayBuffer,
+    ],
+  },
+);
+
+const runEncode = createSender<EncodePayload, Blob>(
+  () => new Worker(new URL("./encode-worker.ts", import.meta.url)),
+  { reuse: true, transfer: ({ data }) => [data.buffer as ArrayBuffer] },
+);
+
+// Encode a separation off the main thread when it needs the synchronous wasm
+// codecs (grayscale PNG/JPEG); WebP and the non-grayscale path use the canvas
+// encoder, which is already async/off-thread, so run it inline.
+function encodeImage(
+  image: ImageData,
+  type: string,
+  grayscale: boolean,
+): Promise<Blob> {
+  if (grayscale && (type === "image/png" || type === "image/jpeg")) {
+    return runEncode({
+      data: image.data,
+      width: image.width,
+      height: image.height,
+      type,
+    });
+  } else {
+    const canvas = new OffscreenCanvas(image.width, image.height);
+    canvas.getContext("2d")!.putImageData(image, 0, 0);
+    return canvas.convertToBlob({ type });
+  }
+}
 
 /**
  * Run the SVG-path bulk solver, returning the per-color preview update map,
@@ -101,35 +140,7 @@ async function rasterPipeline(
     outputType: blob.type,
     grayscale,
   };
-  const worker = new Worker(new URL("./raster-worker.ts", import.meta.url));
-  const result = await new Promise<RasterResult>((resolve) => {
-    worker.addEventListener(
-      "message",
-      (event: MessageEvent<RasterWorkerOut>) => {
-        const msg = event.data;
-        if (msg.typ === "progress") {
-          onProgress?.(msg.value);
-        } else {
-          resolve(msg);
-          worker.terminate();
-        }
-      },
-    );
-    worker.postMessage(message, {
-      transfer: [
-        transPool.buffer as ArrayBuffer,
-        transRender.buffer as ArrayBuffer,
-      ],
-    });
-  });
-  if (result.typ === "err") {
-    throw new Error(result.err);
-  }
-  return {
-    preview: result.preview,
-    separations: result.separations,
-    chosenOrder: result.chosenOrder,
-  };
+  return runRaster(message, onProgress);
 }
 
 async function* extractColors(blob: Blob): AsyncIterableIterator<RgbU32> {
@@ -202,22 +213,26 @@ async function updateColors(
     const outDatas = updaters.map(
       () => new ImageData(width, height, { colorSpace: "srgb" }),
     );
+    // Resolve the culori updaters once per unique colour, not per pixel; the
+    // Uint8ClampedArray rounds/clamps each result like the output would.
+    const table = new Map<RgbU32, Uint8ClampedArray>();
     for (let i = 0; i < srcData.length; i += 4) {
-      const src = bytesToRgb(srcData[i], srcData[i + 1], srcData[i + 2]);
-      const alpha = srcData[i + 3];
+      const key = packRgb(srcData[i], srcData[i + 1], srcData[i + 2]);
+      if (table.has(key)) continue;
+      const src = rgbToCulori(key);
+      const bytes = new Uint8ClampedArray(updaters.length * 3);
       for (let j = 0; j < updaters.length; j++) {
         const { r, g, b } = colorBytes(updaters[j](src));
-        const out = outDatas[j].data;
-        out[i] = r;
-        out[i + 1] = g;
-        out[i + 2] = b;
-        out[i + 3] = alpha;
+        const base = j * 3;
+        bytes[base] = r;
+        bytes[base + 1] = g;
+        bytes[base + 2] = b;
       }
+      table.set(key, bytes);
     }
+    paintOutputs(srcData, outDatas, table);
     return await Promise.all(
-      outDatas.map((data) =>
-        encodeImageOffMainThread(data, blob.type, grayscale),
-      ),
+      outDatas.map((data) => encodeImage(data, blob.type, grayscale)),
     );
   } else if (blob.type === "image/svg+xml") {
     const text = await blob.text();
