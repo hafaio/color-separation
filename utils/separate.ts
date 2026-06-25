@@ -8,17 +8,54 @@ import {
   unpackRgb,
 } from "./color";
 import { blob2url, url2blob } from "./conversion";
-import { encodeImageOffMainThread } from "./encode-client";
 import type { MixingMode } from "./sep";
 import {
+  createSender,
+  type EncodePayload,
   type RasterMessage,
-  type RasterResult,
-  type RasterWorkerOut,
+  type RasterOut,
   SOLVER_FRACTION,
-} from "./winterface";
+} from "./worker-rpc";
 
 // 40% of trailing budget for SVG `updateColors` finishing post-bulksep.
 const SVG_UPDATE_END = SOLVER_FRACTION + (1 - SOLVER_FRACTION) * 0.4;
+
+const runRaster = createSender<RasterMessage, RasterOut>(
+  () => new Worker(new URL("./raster-worker.ts", import.meta.url)),
+  {
+    transfer: ({ pool, renderPool }) => [
+      pool.buffer as ArrayBuffer,
+      renderPool.buffer as ArrayBuffer,
+    ],
+  },
+);
+
+const runEncode = createSender<EncodePayload, Blob>(
+  () => new Worker(new URL("./encode-worker.ts", import.meta.url)),
+  { reuse: true, transfer: ({ data }) => [data.buffer as ArrayBuffer] },
+);
+
+// Encode a separation off the main thread when it needs the synchronous wasm
+// codecs (grayscale PNG/JPEG); WebP and the non-grayscale path use the canvas
+// encoder, which is already async/off-thread, so run it inline.
+function encodeImage(
+  image: ImageData,
+  type: string,
+  grayscale: boolean,
+): Promise<Blob> {
+  if (grayscale && (type === "image/png" || type === "image/jpeg")) {
+    return runEncode({
+      data: image.data,
+      width: image.width,
+      height: image.height,
+      type,
+    });
+  } else {
+    const canvas = new OffscreenCanvas(image.width, image.height);
+    canvas.getContext("2d")!.putImageData(image, 0, 0);
+    return canvas.convertToBlob({ type });
+  }
+}
 
 /**
  * Run the SVG-path bulk solver, returning the per-color preview update map,
@@ -101,35 +138,7 @@ async function rasterPipeline(
     outputType: blob.type,
     grayscale,
   };
-  const worker = new Worker(new URL("./raster-worker.ts", import.meta.url));
-  const result = await new Promise<RasterResult>((resolve) => {
-    worker.addEventListener(
-      "message",
-      (event: MessageEvent<RasterWorkerOut>) => {
-        const msg = event.data;
-        if (msg.typ === "progress") {
-          onProgress?.(msg.value);
-        } else {
-          resolve(msg);
-          worker.terminate();
-        }
-      },
-    );
-    worker.postMessage(message, {
-      transfer: [
-        transPool.buffer as ArrayBuffer,
-        transRender.buffer as ArrayBuffer,
-      ],
-    });
-  });
-  if (result.typ === "err") {
-    throw new Error(result.err);
-  }
-  return {
-    preview: result.preview,
-    separations: result.separations,
-    chosenOrder: result.chosenOrder,
-  };
+  return runRaster(message, onProgress);
 }
 
 async function* extractColors(blob: Blob): AsyncIterableIterator<RgbU32> {
@@ -215,9 +224,7 @@ async function updateColors(
       }
     }
     return await Promise.all(
-      outDatas.map((data) =>
-        encodeImageOffMainThread(data, blob.type, grayscale),
-      ),
+      outDatas.map((data) => encodeImage(data, blob.type, grayscale)),
     );
   } else if (blob.type === "image/svg+xml") {
     const text = await blob.text();
