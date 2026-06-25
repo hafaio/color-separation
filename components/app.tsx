@@ -376,6 +376,7 @@ export default function App(): ReactElement {
             ordering === "auto",
             increments,
             lambda,
+            true,
             reportProgress,
           );
           // Filenames follow the chosen print order so the prefix matches the
