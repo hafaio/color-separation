@@ -1,6 +1,16 @@
 import type { RgbU32 } from "./color";
 import type { MixingMode } from "./sep";
-import type { Result, WorkerOut } from "./winterface";
+import { type BulkMessage, type BulkResult, createSender } from "./worker-rpc";
+
+const runBulk = createSender<BulkMessage, BulkResult>(
+  () => new Worker(new URL("./bulksep-worker.ts", import.meta.url)),
+  {
+    transfer: ({ pool, renderPool }) => [
+      pool.buffer as ArrayBuffer,
+      renderPool.buffer as ArrayBuffer,
+    ],
+  },
+);
 
 export async function* bulkColorSeparation(
   colorIter: AsyncIterable<RgbU32>,
@@ -20,37 +30,19 @@ export async function* bulkColorSeparation(
   const transPool = new Uint32Array(pool);
   const transRender = new Uint32Array(renderPool);
 
-  const message = {
-    colors,
-    pool: transPool,
-    renderPool: transRender,
-    mixingMode,
-    autoOrder,
-    increments,
-    lambda,
-  };
-  const worker = new Worker(new URL("./worker.ts", import.meta.url));
-  const res = await new Promise<Result>((resolve) => {
-    worker.addEventListener("message", (event: MessageEvent<WorkerOut>) => {
-      const msg = event.data;
-      if (msg.typ === "progress") {
-        onProgress?.(msg.value);
-      } else {
-        resolve(msg);
-        worker.terminate();
-      }
-    });
-    worker.postMessage(message, {
-      transfer: [
-        transPool.buffer as ArrayBuffer,
-        transRender.buffer as ArrayBuffer,
-      ],
-    });
-  });
-  if (res.typ === "err") {
-    throw new Error(res.err);
-  }
-  const { prevs, opacs, chosenOrder } = res;
+  const { prevs, opacs, chosenOrder } = await runBulk(
+    {
+      colors,
+      pool: transPool,
+      renderPool: transRender,
+      mixingMode,
+      autoOrder,
+      increments,
+      lambda,
+    },
+    onProgress,
+  );
+
   onChosenOrder?.(chosenOrder);
   let i = 0;
   for (const key of colors.keys()) {
