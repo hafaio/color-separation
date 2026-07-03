@@ -63,6 +63,19 @@ export function createSender<Send, Receive>(
         worker = spawn();
       }
       const { port1, port2 } = new MessageChannel();
+      const onFailure = (event: ErrorEvent | MessageEvent): void => {
+        cleanup();
+        worker.terminate();
+        if (worker === shared) shared = undefined;
+        const detail =
+          event instanceof ErrorEvent ? event.message : "message error";
+        reject(new Error(`worker failed: ${detail}`));
+      };
+      const cleanup = (): void => {
+        port1.close();
+        worker.removeEventListener("error", onFailure);
+        worker.removeEventListener("messageerror", onFailure);
+      };
       port1.addEventListener(
         "message",
         (event: MessageEvent<WorkerReply<Receive>>) => {
@@ -71,12 +84,14 @@ export function createSender<Send, Receive>(
             onProgress?.(reply.progress);
             return;
           }
-          port1.close();
+          cleanup();
           if (!reuse) worker.terminate();
           if (reply.kind === "result") resolve(reply.result);
           else reject(new Error(reply.error));
         },
       );
+      worker.addEventListener("error", onFailure);
+      worker.addEventListener("messageerror", onFailure);
       port1.start();
       worker.postMessage(payload, [port2, ...transfer(payload)]);
     });
