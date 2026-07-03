@@ -360,9 +360,8 @@ export default function App(): ReactElement {
           const fileName = parsed.raw.name;
           const baseName =
             fileName.slice(0, fileName.lastIndexOf(".")) || fileName;
-
-          const pool = orderedActive.map(([color]) => color);
-          const names = orderedActive.map(([, state]) => state.name);
+          const pool = displayOrdered.map(([color]) => color);
+          const names = displayOrdered.map(([, state]) => state.name);
 
           setDownloadProgress(0);
           let lastReported = -1;
@@ -375,7 +374,7 @@ export default function App(): ReactElement {
             parsed.raw,
             pool,
             mixingMode,
-            ordering === "auto",
+            false,
             increments,
             lambda,
             true,
@@ -404,7 +403,7 @@ export default function App(): ReactElement {
         }
       })();
     }
-  }, [parsed, orderedActive, mixingMode, ordering, increments, lambda]);
+  }, [parsed, displayOrdered, mixingMode, increments, lambda]);
 
   const saveCustom = useCallback(
     (color: CustomColor) => {
