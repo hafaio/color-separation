@@ -250,6 +250,7 @@ export default function App(): ReactElement {
     if (!parsed) {
       setPreview(undefined);
       setGrid(undefined);
+      setRendering(false);
       return;
     }
     const pool = orderedActive.map(([color]) => color);
@@ -259,6 +260,7 @@ export default function App(): ReactElement {
     if (!pool.length) {
       setPreview(undefined);
       setGrid(undefined);
+      setRendering(false);
       return;
     }
     const key = renderKey(
