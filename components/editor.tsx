@@ -70,9 +70,6 @@ export default function Editor({
   setShowGrid: (val: boolean) => void;
   rendering: boolean;
 }): ReactElement {
-  const exportText = colors.size
-    ? undefined
-    : "must select at least one color to export";
   const onDown = useCallback(() => {
     setShowRaw(true);
   }, [setShowRaw]);
@@ -122,6 +119,9 @@ export default function Editor({
     [setMixingMode],
   );
   const selected = [...colors.values()].some(({ active }) => active);
+  const exportText = selected
+    ? undefined
+    : "must select at least one color to export";
   return (
     <>
       <div className="flex flex-col gap-2 flex-shrink-0">
