@@ -21,7 +21,7 @@ export default function HelpText({
           <li>Upload an image by clicking above or dropping it anywhere.</li>
           <li>
             Open the palette to add or remove colors. Riso inks without a dot
-            are spectrally calibrated and can use Kubelka–Munk mixing; inks with
+            are spectrally calibrated and can use Kubelka-Munk mixing; inks with
             a white center dot fall back to alpha-blend mixing.
           </li>
           <li>
@@ -44,7 +44,8 @@ export default function HelpText({
           <ul className="list-disc ml-4 space-y-1">
             <li>
               <span className="font-medium">Linear</span> — averages ink colors
-              in linear RGB. Order-independent and fast; ignores ink opacity.
+              directly in sRGB. Order-independent and fast but non-physical;
+              ignores ink opacity.
             </li>
             <li>
               <span className="font-medium">Alpha blend</span> — composites inks
@@ -52,9 +53,9 @@ export default function HelpText({
               white substrate. Order-dependent.
             </li>
             <li>
-              <span className="font-medium">Kubelka–Munk</span> — spectral
+              <span className="font-medium">Kubelka-Munk</span> — spectral
               halftone model using calibrated reflectance per ink, with
-              Neugebauer–Demichel dot-coverage physics. Most accurate for
+              Neugebauer-Demichel dot-coverage physics. Most accurate for
               risograph blends; requires every active ink to be calibrated.
             </li>
           </ul>
@@ -64,7 +65,7 @@ export default function HelpText({
             Print order
           </p>
           <p>
-            Order matters for alpha-blend and Kubelka–Munk. Choose a fixed order
+            Order matters for alpha-blend and Kubelka-Munk. Choose a fixed order
             or let the solver search permutations for the lowest weighted
             reconstruction error.
           </p>
