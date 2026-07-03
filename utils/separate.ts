@@ -61,9 +61,8 @@ function encodeImage(
 
 /**
  * Run the SVG-path bulk solver, returning the per-color preview update map,
- * the per-color opacities, and the chosen print order. Both `genPreview*`
- * helpers wrap their callers around this — the only differences between
- * them are which maps they consume from each yielded triple.
+ * the per-color opacities, and the chosen print order. Consumed by
+ * genPreviewAndSeparation (all three) and genSeparation (opacities only).
  */
 async function runBulkForSvg(
   blob: Blob,
@@ -329,44 +328,6 @@ function separationUpdaters(
       return { mode: "rgb", r: v, g: v, b: v, alpha };
     };
   });
-}
-
-export async function genPreview(
-  blob: Blob,
-  pool: readonly RgbU32[],
-  renderPool: readonly RgbU32[],
-  mixingMode: MixingMode,
-  autoOrder: boolean,
-  increments: number,
-  lambda: number,
-): Promise<Blob> {
-  if (isRaster(blob.type)) {
-    const { preview } = await rasterPipeline(
-      blob,
-      pool,
-      renderPool,
-      mixingMode,
-      autoOrder,
-      increments,
-      lambda,
-      false,
-    );
-    return preview;
-  }
-  const update = new Map<RgbU32, RgbU32>();
-  for await (const [key, color] of bulkColorSeparation(
-    extractColors(blob),
-    pool,
-    renderPool,
-    mixingMode,
-    autoOrder,
-    increments,
-    lambda,
-  )) {
-    update.set(key, color);
-  }
-  const [out] = await updateColors(blob, [previewUpdater(update)], false);
-  return out;
 }
 
 export async function genPreviewAndSeparation(
