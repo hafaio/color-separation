@@ -6,12 +6,16 @@ export type RgbU32 = number;
 /** Channel triple in linear sRGB space, each in [0, 1]. */
 export type LinearRgb = readonly [number, number, number];
 
+// Round to the nearest byte and clamp to [0, 255]; culori conversions of
+// out-of-sRGB-gamut colors (lab/oklch/display-p3) overshoot, and a bare
+// `& 0xff` would wrap those into a wildly wrong channel.
+function toByte(channel: number): number {
+  const rounded = Math.round(channel);
+  return rounded < 0 ? 0 : rounded > 255 ? 255 : rounded;
+}
+
 export function packRgb(r: number, g: number, b: number): RgbU32 {
-  return (
-    ((Math.round(r) & 0xff) << 16) |
-    ((Math.round(g) & 0xff) << 8) |
-    (Math.round(b) & 0xff)
-  );
+  return (toByte(r) << 16) | (toByte(g) << 8) | toByte(b);
 }
 
 export function unpackRgb(c: RgbU32): { r: number; g: number; b: number } {
