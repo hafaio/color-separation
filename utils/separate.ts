@@ -106,7 +106,15 @@ async function runBulkForSvg(
   return { update, mapping, chosenOrder };
 }
 
-const COLOR_PROPS = ["fill", "stroke", "stopColor"] as const;
+const COLOR_PROPS = [
+  "fill",
+  "stroke",
+  "stop-color",
+  "flood-color",
+  "lighting-color",
+  "solid-color",
+  "color",
+] as const;
 
 function isRaster(type: string): boolean {
   return type === "image/png" || type === "image/jpeg" || type === "image/webp";
@@ -164,7 +172,7 @@ async function* extractColors(blob: Blob): AsyncIterableIterator<RgbU32> {
         for (const rule of elem.sheet?.cssRules ?? []) {
           if (rule instanceof CSSStyleRule) {
             for (const prop of COLOR_PROPS) {
-              const color = parse(rule.style?.[prop]);
+              const color = parse(rule.style.getPropertyValue(prop));
               if (color) {
                 const { r, g, b } = colorBytes(color);
                 yield packRgb(r, g, b);
@@ -179,10 +187,15 @@ async function* extractColors(blob: Blob): AsyncIterableIterator<RgbU32> {
         }
       } else if (elem instanceof SVGElement) {
         for (const prop of COLOR_PROPS) {
-          const color = parse(elem.style?.[prop]);
-          if (color) {
-            const { r, g, b } = colorBytes(color);
-            yield packRgb(r, g, b);
+          for (const raw of [
+            elem.style.getPropertyValue(prop),
+            elem.getAttribute(prop),
+          ]) {
+            const color = parse(raw || "");
+            if (color) {
+              const { r, g, b } = colorBytes(color);
+              yield packRgb(r, g, b);
+            }
           }
         }
       }
@@ -260,9 +273,9 @@ async function updateColors(
             for (const rule of rules) {
               if (rule instanceof CSSStyleRule) {
                 for (const prop of COLOR_PROPS) {
-                  const init = parse(rule.style?.[prop]);
+                  const init = parse(rule.style.getPropertyValue(prop));
                   if (init) {
-                    rule.style[prop] = formatRgb(update(init));
+                    rule.style.setProperty(prop, formatRgb(update(init)));
                   }
                 }
               }
@@ -273,9 +286,13 @@ async function updateColors(
             imgIdx++;
           } else if (elem instanceof SVGElement) {
             for (const prop of COLOR_PROPS) {
-              const init = parse(elem.style[prop]);
-              if (init) {
-                elem.style[prop] = formatRgb(update(init));
+              const styleColor = parse(elem.style.getPropertyValue(prop));
+              if (styleColor) {
+                elem.style.setProperty(prop, formatRgb(update(styleColor)));
+              }
+              const attrColor = parse(elem.getAttribute(prop) || "");
+              if (attrColor) {
+                elem.setAttribute(prop, formatRgb(update(attrColor)));
               }
             }
           }
