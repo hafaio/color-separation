@@ -1,8 +1,6 @@
 {
   "private": true,
   "name": "color-separation",
-  "version": "1.0.0",
-  "main": "index.js",
   "author": "Erik Brinkman <erik.brinkman@gmail.com>",
   "license": "MIT",
   "type": "module",
