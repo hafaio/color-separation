@@ -13,28 +13,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  gate:
-    uses: ./.github/workflows/build.yml
-
   build:
-    needs: gate
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install
-      - uses: actions/configure-pages@v5
-      - uses: actions/cache@v4
-        with:
-          path: |
-            .next/cache
-          key: ${{ runner.os }}-nextjs-${{ hashFiles('bun.lockb') }}-${{ hashFiles('**.[jt]s', '**.[jt]sx') }}
-          restore-keys: |
-            ${{ runner.os }}-nextjs-${{ hashFiles('bun.lockb') }}-
-      - run: bun export
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./out
+    uses: ./.github/workflows/build.yml
+    with:
+      upload-pages: true
 
   deploy:
     needs: build

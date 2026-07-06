@@ -1,17 +1,38 @@
 name: build
 
 on:
+  push:
+    branches: [main]
   pull_request:
   workflow_call:
+    inputs:
+      upload-pages:
+        type: boolean
+        default: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
       - run: bun install
       - run: bun lint
       - run: bun test
+      - if: inputs.upload-pages
+        uses: actions/configure-pages@v5
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('bun.lockb') }}-${{ hashFiles('**.[jt]s', '**.[jt]sx') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-${{ hashFiles('bun.lockb') }}-
       - run: bun export
+        env:
+          NEXT_PUBLIC_BASE_PATH: ${{ inputs.upload-pages && format('/{0}', github.event.repository.name) || '' }}
+      - if: inputs.upload-pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./out
