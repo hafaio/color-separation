@@ -19,7 +19,7 @@ export async function* bulkColorSeparation(
   mixingMode: MixingMode,
   autoOrder: boolean,
   increments: number,
-  lambda: number,
+  tolerance: number,
   onChosenOrder?: (order: readonly number[]) => void,
   onProgress?: (frac: number) => void,
 ): AsyncIterableIterator<[RgbU32, RgbU32, number[]]> {
@@ -38,7 +38,7 @@ export async function* bulkColorSeparation(
       mixingMode,
       autoOrder,
       increments,
-      lambda,
+      tolerance,
     },
     onProgress,
   );

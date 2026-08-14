@@ -33,7 +33,7 @@ serve<RasterMessage, RasterOut>(async (message, onProgress) => {
     mixingMode,
     autoOrder,
     increments,
-    lambda,
+    tolerance,
     outputType,
     grayscale,
   } = message;
@@ -63,22 +63,14 @@ serve<RasterMessage, RasterOut>(async (message, onProgress) => {
     autoOrder,
     counts,
     increments,
-    lambda,
+    tolerance,
   );
 
   const total = counts.size;
   const n = ctx.poolColors.length;
   const prevs = new Uint32Array(total);
   const opacs = new Float64Array(total * n);
-  solveColors(
-    ctx,
-    counts.keys(),
-    total,
-    prevs,
-    opacs,
-    SOLVER_FRACTION,
-    onProgress,
-  );
+  solveColors(ctx, counts, prevs, opacs, SOLVER_FRACTION, onProgress);
 
   // Per unique colour, the RGB to write for each output: the preview's channels,
   // then each separation's grey repeated across R/G/B (the outputs are RGBA).

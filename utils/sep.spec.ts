@@ -1,8 +1,22 @@
 import { expect, test } from "bun:test";
 import { formatHex, parse, type Rgb } from "culori";
-import { bytesToRgb, colorBytes, rgbToCulori } from "./color";
+import {
+  bytesToRgb,
+  colorBytes,
+  packRgb,
+  type RgbU32,
+  rgbToCulori,
+} from "./color";
 import { INKS_BY_ID, RISO_DEFAULTS } from "./inks";
-import { buildKmCache, colorSeparation, composeColors } from "./sep";
+import {
+  buildKmCache,
+  colorSeparation,
+  composeColors,
+  inkCount,
+  type MinInkResult,
+  type MixingMode,
+} from "./sep";
+import { buildSolverContext, solveColors } from "./solver-context";
 import { buildLayer, type SpectralLayer } from "./spectral";
 
 const hex = (s: string): Rgb => parse(s) as Rgb;
@@ -12,6 +26,72 @@ const RISO_POOL = RISO_DEFAULTS.map((id) =>
   rgbToCulori(INKS_BY_ID.get(id)!.rgb),
 );
 const RISO_KM_CACHE = buildKmCache(RISO_LAYERS);
+const RISO_WIRE = RISO_DEFAULTS.map((id) => INKS_BY_ID.get(id)!.rgb);
+
+const coverage = (opacities: readonly number[]): number =>
+  opacities.reduce((sum, opacity) => sum + opacity, 0);
+
+function kmSeparate(
+  red: number,
+  green: number,
+  blue: number,
+  tolerance: number,
+): MinInkResult {
+  return colorSeparation(bytesToRgb(red, green, blue), RISO_POOL, {
+    mode: "kubelka_munk",
+    cache: RISO_KM_CACHE,
+    tolerance,
+  });
+}
+
+/** Evenly spaced sRGB steps between two endpoints. */
+function ramp(
+  from: readonly [number, number, number],
+  to: readonly [number, number, number],
+  steps: number,
+): RgbU32[] {
+  return Array.from({ length: steps }, (_, step) => {
+    const frac = step / (steps - 1);
+    return packRgb(
+      from[0] + frac * (to[0] - from[0]),
+      from[1] + frac * (to[1] - from[1]),
+      from[2] + frac * (to[2] - from[2]),
+    );
+  });
+}
+
+/** Run the two-pass worker solver, returning per-color opacities. */
+function solveThroughContext(
+  counts: ReadonlyMap<RgbU32, number>,
+  mixingMode: MixingMode,
+  tolerance: number,
+): Map<RgbU32, number[]> {
+  const ctx = buildSolverContext(
+    new Uint32Array(RISO_WIRE),
+    new Uint32Array(RISO_WIRE),
+    mixingMode,
+    false,
+    counts,
+    0,
+    tolerance,
+  );
+  const channels = ctx.poolColors.length;
+  const prevs = new Uint32Array(counts.size);
+  const opacs = new Float64Array(counts.size * channels);
+  solveColors(ctx, counts, prevs, opacs, 1, () => {});
+  return new Map(
+    [...counts.keys()].map((key, index) => [
+      key,
+      [...opacs.slice(index * channels, (index + 1) * channels)],
+    ]),
+  );
+}
+
+const supportOf = (opacities: readonly number[]): number =>
+  opacities.reduce(
+    (mask, opacity, index) => (opacity > 0 ? mask | (1 << index) : mask),
+    0,
+  );
 
 test("gray linear", () => {
   const colors = [bytesToRgb(0, 0, 0)];
@@ -267,4 +347,116 @@ test("color saturation", () => {
   expect(blue).toBeCloseTo(1 / 7);
   expect(green).toBeCloseTo(6 / 7);
   expect(formatHex(result)).toBe("#00ee99");
+});
+
+test("KM black collapses to the black ink alone", () => {
+  // Regression: least squares alone reproduces black as all six inks at 100%
+  // because the metamer manifold is 3 dimensions wider than the target.
+  const { opacities, inkMask, deltaE: error } = kmSeparate(0, 0, 0, 0);
+  expect(inkCount(inkMask)).toBe(1);
+  // Defaults order: bright-red, fluorescent-pink, yellow, green, blue, black.
+  expect(opacities[5]).toBeCloseTo(1, 2);
+  expect(coverage(opacities)).toBeCloseTo(1, 2);
+  expect(error).toBeLessThan(0.5);
+});
+
+test("KM grays collapse to a single ink at partial coverage", () => {
+  const mid = kmSeparate(128, 128, 128, 0);
+  expect(inkCount(mid.inkMask)).toBe(1);
+  expect(coverage(mid.opacities)).toBeCloseTo(0.77, 1);
+  expect(mid.deltaE).toBeLessThan(0.5);
+
+  const dark = kmSeparate(60, 60, 60, 0);
+  expect(inkCount(dark.inkMask)).toBe(1);
+  expect(coverage(dark.opacities)).toBeCloseTo(0.95, 1);
+  expect(dark.deltaE).toBeLessThan(0.5);
+});
+
+test("coverage falls as tolerance rises", () => {
+  const targets: readonly [number, number, number][] = [
+    [200, 150, 130],
+    [240, 130, 50],
+    [110, 80, 50],
+    [245, 200, 80],
+  ];
+  for (const [red, green, blue] of targets) {
+    const covers = [0, 1, 2, 4, 8].map((tolerance) =>
+      coverage(kmSeparate(red, green, blue, tolerance).opacities),
+    );
+    // Ink count is the primary criterion and coverage only the tie-break, so
+    // a wider budget can swap in a same-size subset that costs a hair more.
+    for (const [index, cover] of covers.entries()) {
+      if (index > 0)
+        expect(cover).toBeLessThanOrEqual(covers[index - 1] + 0.05);
+    }
+    expect(covers[covers.length - 1]).toBeLessThanOrEqual(covers[0]);
+  }
+});
+
+test("increments quantize without reviving an excluded ink", () => {
+  const lattice = [0, 0.25, 0.5, 0.75, 1];
+  const { opacities, inkMask } = colorSeparation(
+    bytesToRgb(150, 90, 60),
+    RISO_POOL,
+    { mode: "kubelka_munk", cache: RISO_KM_CACHE, increments: 4, tolerance: 2 },
+  );
+  for (const opacity of opacities) expect(lattice).toContain(opacity);
+  for (const [index, opacity] of opacities.entries()) {
+    expect(opacity > 0).toBe(((inkMask >> index) & 1) === 1);
+  }
+});
+
+test("a smooth ramp settles on a handful of ink recipes", () => {
+  // Guards recipe stabilization: picking each color's cheapest subset on its
+  // own makes neighboring ramp steps jump between unrelated inks. Drop the
+  // second pass in solveColors and the stabilized count matches the
+  // independent one, which is above the bound asserted here.
+  const steps = ramp([70, 40, 110], [250, 200, 90], 60);
+  const counts = new Map<RgbU32, number>(steps.map((color) => [color, 1]));
+  const solved = solveThroughContext(counts, "kubelka_munk", 2);
+
+  const stabilized = new Set(
+    [...solved.values()].map((opacities) => supportOf(opacities)),
+  );
+  const independent = new Set(
+    steps.map(
+      (color) =>
+        colorSeparation(rgbToCulori(color), RISO_POOL, {
+          mode: "kubelka_munk",
+          cache: RISO_KM_CACHE,
+          tolerance: 2,
+        }).inkMask,
+    ),
+  );
+  expect(stabilized.size).toBeLessThanOrEqual(6);
+  expect(independent.size).toBeGreaterThan(6);
+});
+
+test("stabilized recipes are stable under color reordering", () => {
+  const steps = ramp([70, 40, 110], [250, 200, 90], 24);
+  const weights = steps.map((_, index) => 1 + (index % 7));
+  const forward = new Map<RgbU32, number>(
+    steps.map((color, index) => [color, weights[index]]),
+  );
+  const reversed = new Map<RgbU32, number>(
+    [...steps]
+      .reverse()
+      .map((color, index) => [color, weights.at(-1 - index)!]),
+  );
+
+  const first = solveThroughContext(forward, "kubelka_munk", 2);
+  const second = solveThroughContext(reversed, "kubelka_munk", 2);
+  for (const color of steps) {
+    expect(second.get(color)).toEqual(first.get(color)!);
+  }
+});
+
+test("subtractive ignores tolerance", () => {
+  const target = bytesToRgb(30, 50, 150);
+  const tight = colorSeparation(target, RISO_POOL, { mode: "subtractive" });
+  const loose = colorSeparation(target, RISO_POOL, {
+    mode: "subtractive",
+    tolerance: 8,
+  });
+  expect(loose.opacities).toEqual(tight.opacities);
 });
