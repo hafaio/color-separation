@@ -61,7 +61,6 @@ export function multiStartCoordDescent(
   n: number,
   updateCoord: (i: number, alphas: number[]) => void,
   errorAt: (alphas: readonly number[]) => number,
-  lambdaEff: number,
   sweeps: number,
   converge: number,
 ): number[] {
@@ -80,9 +79,8 @@ export function multiStartCoordDescent(
       }
       lastErr = afterErr;
     }
-    const err = lastErr + lambdaEff * alphas.reduce((s, a) => s + a, 0);
-    if (err < bestErr) {
-      bestErr = err;
+    if (lastErr < bestErr) {
+      bestErr = lastErr;
       best = alphas;
     }
   }
@@ -91,13 +89,12 @@ export function multiStartCoordDescent(
 
 /**
  * Brute-force grid search over `n` variables on a `(increments+1)^n` lattice.
- * Caller supplies an `errorAt` that integrates whatever per-mode forward and
- * sparsity penalty applies; an extra `lambdaEff * Σα` term is added on top.
+ * Caller supplies an `errorAt` that integrates whatever per-mode forward
+ * applies.
  */
 export function gridSearch(
   n: number,
   increments: number,
-  lambdaEff: number,
   errorAt: (alphas: readonly number[]) => number,
 ): number[] {
   const m = increments + 1;
@@ -107,14 +104,12 @@ export function gridSearch(
   let bestErr = Infinity;
   for (let idx = 0; idx < total; idx++) {
     let r = idx;
-    let alphaSum = 0;
     for (let i = 0; i < n; i++) {
       const step = r % m;
       r = Math.floor(r / m);
       alphas[i] = step / increments;
-      alphaSum += alphas[i];
     }
-    const err = errorAt(alphas) + lambdaEff * alphaSum;
+    const err = errorAt(alphas);
     if (err < bestErr) {
       bestErr = err;
       bestAlphas = [...alphas];

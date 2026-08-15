@@ -22,9 +22,9 @@
 import { type RgbU32, rgbToCulori } from "./color";
 import {
   buildKmCache,
-  colorSeparation,
   type MixingMode,
   type SeparationOptions,
+  separateWithMask,
 } from "./sep";
 import type { SpectralLayer } from "./spectral";
 
@@ -85,10 +85,19 @@ export function findAutoOrder(
     return { mode: mixingMode };
   });
 
+  // Ordering only affects how well the whole pool can hit a color, so this
+  // races full-pool fits and skips the min-ink subset sweep entirely.
+  const allInks = (1 << n) - 1;
+
   const pull = (i: number): boolean => {
     if (pulled[i] >= targets.length) return false;
     const t = targets[pulled[i]];
-    const { error } = colorSeparation(t.obj, permPools[i], permOpts[i]);
+    const { error } = separateWithMask(
+      t.obj,
+      permPools[i],
+      permOpts[i],
+      allInks,
+    );
     errSums[i] += t.count * error;
     weights[i] += t.count;
     pulled[i]++;
