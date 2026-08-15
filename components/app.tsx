@@ -96,11 +96,12 @@ function renderKey(
   ordering: Ordering,
   increments: number,
   tolerance: number,
+  press: boolean,
 ): string {
   const pool = orderedActive
     .map(([rgb, state]) => `${rgb}:${state.remap ?? ""}`)
     .join(",");
-  return `${mixingMode}|${ordering}|${increments}|${tolerance}|${pool}`;
+  return `${mixingMode}|${ordering}|${increments}|${tolerance}|${press}|${pool}`;
 }
 
 export default function App(): ReactElement {
@@ -190,6 +191,8 @@ export default function App(): ReactElement {
   const [grid, setGrid] = useState<string | undefined>();
   const [increments, setIncrements] = useState(0);
   const [tolerance, setTolerance] = useState(DEFAULT_TOLERANCE);
+  // On by default: without it midtones come out roughly 10 ΔE00 too light.
+  const [press, setPress] = useState(true);
   // The most recent worker-chosen print order, used to drive badge numbers
   // and filename indices under `auto` ordering. Stays in sync with whichever
   // render last completed; reset whenever the baseline pool changes.
@@ -273,6 +276,7 @@ export default function App(): ReactElement {
       ordering,
       increments,
       tolerance,
+      press,
     );
     const cached = renderCache.current.get(key);
     if (cached) {
@@ -310,6 +314,7 @@ export default function App(): ReactElement {
           autoOrder,
           increments,
           tolerance,
+          press,
           reportProgress,
         );
         // separations come back in chosen order; tint with the corresponding
@@ -354,7 +359,15 @@ export default function App(): ReactElement {
     return () => {
       cancelled = true;
     };
-  }, [orderedActive, mixingMode, ordering, increments, parsed, tolerance]);
+  }, [
+    orderedActive,
+    mixingMode,
+    ordering,
+    increments,
+    parsed,
+    tolerance,
+    press,
+  ]);
 
   const download = useCallback(() => {
     if (parsed) {
@@ -381,6 +394,7 @@ export default function App(): ReactElement {
             false,
             increments,
             tolerance,
+            press,
             true,
             reportProgress,
           );
@@ -407,7 +421,7 @@ export default function App(): ReactElement {
         }
       })();
     }
-  }, [parsed, displayOrdered, mixingMode, increments, tolerance]);
+  }, [parsed, displayOrdered, mixingMode, increments, tolerance, press]);
 
   const saveCustom = useCallback(
     (color: CustomColor) => {
@@ -468,6 +482,8 @@ export default function App(): ReactElement {
         setIncrements={setIncrements}
         tolerance={tolerance}
         setTolerance={setTolerance}
+        press={press}
+        setPress={setPress}
         download={download}
         isDownloading={isDownloading}
         setShowRaw={setShowRaw}

@@ -9,6 +9,11 @@
  * - `kubelka_munk`: dithered-halftone physics via the Neugebauer-Demichel
  *   model layered on single-constant K-M, with optional fluorescence.
  *
+ * The latter two optionally run through `press.ts`, which spreads each dot the
+ * way a duplicator's screen does. `subtractive` never does: it is a declared
+ * non-physical abstraction rather than a print prediction, and bolting press
+ * physics onto it would only manufacture confidence it hasn't earned.
+ *
  * With more inks than color dimensions the solution set is a manifold of
  * metamers, so plain least-squares happily spends six overlapping layers where
  * one ink would do. Every mode therefore picks the fewest inks whose composed
@@ -33,7 +38,12 @@ import {
   rgbToCulori,
   srgbEncode,
 } from "./color";
-import { gridSearch, multiStartCoordDescent } from "./optimize";
+import {
+  gridSearch,
+  minimizeQuadraticResiduals,
+  multiStartCoordDescent,
+} from "./optimize";
+import { demichelWeights, effectiveCoverage } from "./press";
 import {
   ndForward,
   ndForwardXyz,
@@ -199,15 +209,49 @@ function multiplyForward(
   return [r, g, b];
 }
 
+/**
+ * The same stack under press simulation. Gain applies only where a dot meets
+ * bare paper, so the plain product no longer factors; expanding the Demichel
+ * weights against multiplicative primaries would cost 2^n terms. Splitting the
+ * area instead by which ink lands on the paper first keeps it linear, because
+ * everything printed after that ink sits on ink and so collapses back into an
+ * ordinary nominal-coverage product.
+ */
+function multiplyPressForward(
+  opacities: readonly number[],
+  poolLinear: readonly LinearRgb[],
+): LinearRgb {
+  // `bare` is the stack as seen from paper no ink has reached yet; `above` the
+  // plain product of every layer printed after the current one.
+  let bareR = 1;
+  let bareG = 1;
+  let bareB = 1;
+  let aboveR = 1;
+  let aboveG = 1;
+  let aboveB = 1;
+  for (let index = opacities.length - 1; index >= 0; index--) {
+    const nominal = opacities[index];
+    const gained = effectiveCoverage(nominal);
+    const [cr, cg, cb] = poolLinear[index];
+    bareR = (1 - gained) * bareR + gained * cr * aboveR;
+    bareG = (1 - gained) * bareG + gained * cg * aboveG;
+    bareB = (1 - gained) * bareB + gained * cb * aboveB;
+    aboveR *= 1 - nominal + nominal * cr;
+    aboveG *= 1 - nominal + nominal * cg;
+    aboveB *= 1 - nominal + nominal * cb;
+  }
+  return [bareR, bareG, bareB];
+}
+
 function squaredError(a: LinearRgb, b: LinearRgb): number {
   return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
 }
 
 /**
- * Both iterative forwards are exactly affine in a single opacity with the rest
- * held fixed, so the least-squares optimum for that coordinate is the target's
- * projection onto the segment from the α=0 forward to the α=1 forward, clamped
- * back into the unit interval.
+ * Without press simulation both iterative forwards are exactly affine in a
+ * single opacity with the rest held fixed, so the least-squares optimum for
+ * that coordinate is the target's projection onto the segment from the α=0
+ * forward to the α=1 forward, clamped back into the unit interval.
  */
 function projectAlpha(
   target: LinearRgb,
@@ -229,30 +273,55 @@ function projectAlpha(
   }
 }
 
-function updateMultiplyCoord(
-  index: number,
-  alphas: number[],
+// Per-channel coefficients of F(α) − target, reused across coordinate updates.
+const quadraticOffset = [0, 0, 0];
+const quadraticLinear = [0, 0, 0];
+const quadraticSquare = [0, 0, 0];
+
+/**
+ * With press simulation a coordinate enters its forward twice — as f(α) over
+ * paper and as α over ink — so the forward is quadratic in α rather than a
+ * segment, and least squares against it is a quartic. Recover the quadratic
+ * from three evaluations and minimize the quartic exactly: its derivative is a
+ * cubic, so the optimum is among that cubic's real roots and the two
+ * endpoints.
+ */
+function projectAlphaQuadratic(
   target: LinearRgb,
-  poolLinear: readonly LinearRgb[],
-): void {
-  alphas[index] = 0;
-  const at0 = multiplyForward(alphas, poolLinear);
-  alphas[index] = 1;
-  const at1 = multiplyForward(alphas, poolLinear);
-  alphas[index] = projectAlpha(target, at0, at1);
+  at0: LinearRgb,
+  atHalf: LinearRgb,
+  at1: LinearRgb,
+): number {
+  for (let axis = 0; axis < 3; axis++) {
+    quadraticOffset[axis] = at0[axis] - target[axis];
+    quadraticLinear[axis] = 4 * atHalf[axis] - 3 * at0[axis] - at1[axis];
+    quadraticSquare[axis] = 2 * at0[axis] + 2 * at1[axis] - 4 * atHalf[axis];
+  }
+  return minimizeQuadraticResiduals(
+    quadraticOffset,
+    quadraticLinear,
+    quadraticSquare,
+  );
 }
 
-function updateKmCoord(
+function updateCoord(
   index: number,
   alphas: number[],
   target: LinearRgb,
-  primariesXyz: Float64Array,
+  forward: (alphas: readonly number[]) => LinearRgb,
+  press: boolean,
 ): void {
   alphas[index] = 0;
-  const at0 = kmForwardLinear(alphas, primariesXyz);
+  const at0 = forward(alphas);
   alphas[index] = 1;
-  const at1 = kmForwardLinear(alphas, primariesXyz);
-  alphas[index] = projectAlpha(target, at0, at1);
+  const at1 = forward(alphas);
+  if (press) {
+    alphas[index] = 0.5;
+    const atHalf = forward(alphas);
+    alphas[index] = projectAlphaQuadratic(target, at0, atHalf, at1);
+  } else {
+    alphas[index] = projectAlpha(target, at0, at1);
+  }
 }
 
 interface CoordTuning {
@@ -326,8 +395,13 @@ interface ModeSolver {
 function kmForwardLinear(
   opacities: readonly number[],
   primariesXyz: Float64Array,
+  press: boolean,
+  weights: Float64Array,
 ): LinearRgb {
-  const [X, Y, Z] = ndForwardXyz(opacities, primariesXyz);
+  const [X, Y, Z] = ndForwardXyz(
+    demichelWeights(opacities, press, weights),
+    primariesXyz,
+  );
   return xyzToLinearSrgb(X, Y, Z);
 }
 
@@ -370,8 +444,12 @@ function kmModeSolver(
   target: Color,
   cache: KmCache,
   increments: number,
+  press: boolean,
 ): ModeSolver {
   const targetLinear = linearize(target);
+  const poolWeights = new Float64Array(1 << cache.n);
+  const poolForward = (opacities: readonly number[]): LinearRgb =>
+    kmForwardLinear(opacities, cache.primariesXyz, press, poolWeights);
   return {
     poolSize: cache.n,
     solve: (inks) => {
@@ -379,31 +457,27 @@ function kmModeSolver(
         inks.length === cache.n
           ? cache.primariesXyz
           : subsetPrimariesXyz(cache.primariesXyz, inks);
+      // One scratch buffer per subset solve, reused across every evaluation.
+      const weights = new Float64Array(1 << inks.length);
+      const forward = (alphas: readonly number[]): LinearRgb =>
+        kmForwardLinear(alphas, primariesXyz, press, weights);
       const errorAt = (alphas: readonly number[]): number =>
-        squaredError(kmForwardLinear(alphas, primariesXyz), targetLinear);
+        squaredError(forward(alphas), targetLinear);
       const sub = solveCoords(
         inks.length,
         increments,
         KM_TUNING,
         (index, alphas) =>
-          updateKmCoord(index, alphas, targetLinear, primariesXyz),
+          updateCoord(index, alphas, targetLinear, forward, press),
         errorAt,
       );
       return expandOpacities(sub, inks, cache.n);
     },
     deltaEOf: (opacities) =>
-      deltaE2000(
-        target,
-        linearToCulori(kmForwardLinear(opacities, cache.primariesXyz)),
-      ),
-    compose: (opacities) => kmCompose(opacities, cache),
+      deltaE2000(target, linearToCulori(poolForward(opacities))),
+    compose: (opacities) => kmCompose(opacities, cache, press),
     errorOf: (opacities) =>
-      Math.sqrt(
-        squaredError(
-          kmForwardLinear(opacities, cache.primariesXyz),
-          targetLinear,
-        ) / 3,
-      ),
+      Math.sqrt(squaredError(poolForward(opacities), targetLinear) / 3),
   };
 }
 
@@ -411,36 +485,37 @@ function alphaModeSolver(
   target: Color,
   pool: readonly Color[],
   increments: number,
+  press: boolean,
 ): ModeSolver {
   const targetLinear = linearize(target);
   const poolLinear = pool.map(linearize);
+  const multiply = press ? multiplyPressForward : multiplyForward;
   return {
     poolSize: poolLinear.length,
     solve: (inks) => {
       const subPool = inks.map((ink) => poolLinear[ink]);
+      const forward = (alphas: readonly number[]): LinearRgb =>
+        multiply(alphas, subPool);
       const errorAt = (alphas: readonly number[]): number =>
-        squaredError(multiplyForward(alphas, subPool), targetLinear);
+        squaredError(forward(alphas), targetLinear);
       const sub = solveCoords(
         inks.length,
         increments,
         MULTIPLY_TUNING,
         (index, alphas) =>
-          updateMultiplyCoord(index, alphas, targetLinear, subPool),
+          updateCoord(index, alphas, targetLinear, forward, press),
         errorAt,
       );
       return expandOpacities(sub, inks, poolLinear.length);
     },
     deltaEOf: (opacities) =>
-      deltaE2000(
-        target,
-        linearToCulori(multiplyForward(opacities, poolLinear)),
-      ),
-    compose: (opacities) => delinearize(multiplyForward(opacities, poolLinear)),
+      deltaE2000(target, linearToCulori(multiply(opacities, poolLinear))),
+    compose: (opacities) => delinearize(multiply(opacities, poolLinear)),
     // Per-channel RMS in linear sRGB [0, 1] — same [0, 1] scale as the
     // subtractive path's L1 error so the two are roughly comparable.
     errorOf: (opacities) =>
       Math.sqrt(
-        squaredError(multiplyForward(opacities, poolLinear), targetLinear) / 3,
+        squaredError(multiply(opacities, poolLinear), targetLinear) / 3,
       ),
   };
 }
@@ -490,8 +565,14 @@ function budgeted(result: Result, deltaEBudget: number): MinInkResult {
   return { ...result, deltaEBudget: Math.max(deltaEBudget, result.deltaE) };
 }
 
-function kmCompose(opacities: readonly number[], cache: KmCache): Rgb {
-  const [r, g, b] = spectrumToSrgb(ndForward(opacities, cache.primaries));
+function kmCompose(
+  opacities: readonly number[],
+  cache: KmCache,
+  press: boolean,
+): Rgb {
+  const [r, g, b] = spectrumToSrgb(
+    ndForward(demichelWeights(opacities, press), cache.primaries),
+  );
   return bytesToRgb(r, g, b);
 }
 
@@ -506,11 +587,16 @@ interface SubtractiveSepOpts extends CommonSepOpts {
   readonly mode: "subtractive";
 }
 
-interface AlphaBlendSepOpts extends CommonSepOpts {
+/** Simulate halftone dot gain and trapping; see `press.ts`. Off by default. */
+interface PressSepOpt {
+  readonly press?: boolean;
+}
+
+interface AlphaBlendSepOpts extends CommonSepOpts, PressSepOpt {
   readonly mode: "multiply";
 }
 
-interface KubelkaMunkSepOpts extends CommonSepOpts {
+interface KubelkaMunkSepOpts extends CommonSepOpts, PressSepOpt {
   readonly mode: "kubelka_munk";
   readonly cache: KmCache;
 }
@@ -526,9 +612,10 @@ function modeSolverFor(
   opts: SeparationOptions,
   increments: number,
 ): ModeSolver {
+  const press = opts.mode === "subtractive" ? false : (opts.press ?? false);
   return opts.mode === "kubelka_munk"
-    ? kmModeSolver(target, opts.cache, increments)
-    : alphaModeSolver(target, pool, increments);
+    ? kmModeSolver(target, opts.cache, increments, press)
+    : alphaModeSolver(target, pool, increments, press);
 }
 
 /**
@@ -684,17 +771,20 @@ function subtractiveMasked(
  */
 export type ComposeOptions =
   | { readonly mode: "subtractive" }
-  | { readonly mode: "multiply" }
-  | { readonly mode: "kubelka_munk"; readonly cache: KmCache };
+  | ({ readonly mode: "multiply" } & PressSepOpt)
+  | ({ readonly mode: "kubelka_munk"; readonly cache: KmCache } & PressSepOpt);
 
 export function composeColors(
   opacities: readonly number[],
   pool: readonly Color[],
   opts: ComposeOptions = { mode: "subtractive" },
 ): Rgb {
-  if (opts.mode === "kubelka_munk") return kmCompose(opacities, opts.cache);
-  if (opts.mode === "multiply")
-    return delinearize(multiplyForward(opacities, pool.map(linearize)));
+  if (opts.mode === "kubelka_munk")
+    return kmCompose(opacities, opts.cache, opts.press ?? false);
+  if (opts.mode === "multiply") {
+    const multiply = opts.press ? multiplyPressForward : multiplyForward;
+    return delinearize(multiply(opacities, pool.map(linearize)));
+  }
   return subtractiveCompose(opacities, pool);
 }
 

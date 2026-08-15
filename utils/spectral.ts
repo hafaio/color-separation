@@ -261,24 +261,19 @@ export function ndPrimariesXyz(
 }
 
 /**
- * Halftone forward via area-weighted average of primaries' XYZ. Fast path
- * for the solver — avoids the per-bin spectrum sum since the primaries'
- * XYZ are pre-cached.
+ * Halftone forward via area-weighted average of primaries' XYZ, over the
+ * subset weights from `demichelWeights`. Fast path for the solver — avoids
+ * the per-bin spectrum sum since the primaries' XYZ are pre-cached.
  */
 export function ndForwardXyz(
-  opacities: readonly number[],
+  weights: Float64Array,
   primariesXyz: Float64Array,
 ): [number, number, number] {
-  const n = opacities.length;
-  const total = 1 << n;
   let X = 0;
   let Y = 0;
   let Z = 0;
-  for (let mask = 0; mask < total; mask++) {
-    let w = 1;
-    for (let i = 0; i < n; i++) {
-      w *= (mask >> i) & 1 ? opacities[i] : 1 - opacities[i];
-    }
+  for (let mask = 0; mask < weights.length; mask++) {
+    const w = weights[mask];
     if (w === 0) continue;
     X += w * primariesXyz[mask * 3];
     Y += w * primariesXyz[mask * 3 + 1];
@@ -292,17 +287,12 @@ export function ndForwardXyz(
  * full R(λ) (e.g. for the final preview composite or fluorescence updates).
  */
 export function ndForward(
-  opacities: readonly number[],
+  weights: Float64Array,
   primaries: readonly Float64Array[],
 ): Float64Array {
-  const n = opacities.length;
-  const total = 1 << n;
   const r = new Float64Array(BIN_COUNT);
-  for (let mask = 0; mask < total; mask++) {
-    let w = 1;
-    for (let i = 0; i < n; i++) {
-      w *= (mask >> i) & 1 ? opacities[i] : 1 - opacities[i];
-    }
+  for (let mask = 0; mask < weights.length; mask++) {
+    const w = weights[mask];
     if (w === 0) continue;
     const r_p = primaries[mask];
     for (let b = 0; b < BIN_COUNT; b++) {

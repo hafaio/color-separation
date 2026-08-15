@@ -34,6 +34,7 @@ serve<RasterMessage, RasterOut>(async (message, onProgress) => {
     autoOrder,
     increments,
     tolerance,
+    press,
     outputType,
     grayscale,
   } = message;
@@ -64,6 +65,7 @@ serve<RasterMessage, RasterOut>(async (message, onProgress) => {
     counts,
     increments,
     tolerance,
+    press,
   );
 
   const total = counts.size;

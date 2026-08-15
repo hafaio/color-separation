@@ -10,6 +10,7 @@ serve<BulkMessage, BulkResult>(async (message, onProgress) => {
     autoOrder,
     increments,
     tolerance,
+    press,
   } = message;
 
   const ctx = buildSolverContext(
@@ -20,6 +21,7 @@ serve<BulkMessage, BulkResult>(async (message, onProgress) => {
     colors,
     increments,
     tolerance,
+    press,
   );
 
   const prevs = new Uint32Array(colors.size);

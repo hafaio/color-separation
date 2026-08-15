@@ -38,6 +38,12 @@ Controls
   posterized result.
 - **Ordering** — which ink is laid down first. Only matters for models where
   overprinting is order-dependent.
+- **Press Simulation** — screened dots spread on absorbent paper, so a nominal
+  50% prints closer to 75%; a dot landing on ink instead of paper spreads no
+  further, so overprints stay where they were. Offered for Multiply and
+  Kubelka-Munk, on by default, since without it midtones come out roughly 10
+  ΔE00 too light. Calibrated from one reference chart, so treat it as
+  approximate for any particular machine and paper.
 
 Known limits
 ------------

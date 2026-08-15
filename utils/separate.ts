@@ -72,6 +72,7 @@ async function runBulkForSvg(
   autoOrder: boolean,
   increments: number,
   tolerance: number,
+  press: boolean,
   onProgress: ((frac: number) => void) | undefined,
 ): Promise<{
   update: Map<RgbU32, RgbU32>;
@@ -94,6 +95,7 @@ async function runBulkForSvg(
     autoOrder,
     increments,
     tolerance,
+    press,
     (order) => {
       chosenOrder = order;
     },
@@ -127,6 +129,7 @@ async function rasterPipeline(
   autoOrder: boolean,
   increments: number,
   tolerance: number,
+  press: boolean,
   grayscale: boolean,
   onProgress?: (frac: number) => void,
 ): Promise<{
@@ -144,6 +147,7 @@ async function rasterPipeline(
     autoOrder,
     increments,
     tolerance,
+    press,
     outputType: blob.type,
     grayscale,
   };
@@ -338,6 +342,7 @@ export async function genPreviewAndSeparation(
   autoOrder: boolean,
   increments: number,
   tolerance: number,
+  press: boolean,
   onProgress?: (frac: number) => void,
 ): Promise<{
   preview: Blob;
@@ -353,6 +358,7 @@ export async function genPreviewAndSeparation(
       autoOrder,
       increments,
       tolerance,
+      press,
       false,
       onProgress,
     );
@@ -365,6 +371,7 @@ export async function genPreviewAndSeparation(
     autoOrder,
     increments,
     tolerance,
+    press,
     onProgress,
   );
   onProgress?.(SVG_UPDATE_END);
@@ -457,6 +464,7 @@ export async function genSeparation(
   autoOrder: boolean,
   increments: number,
   tolerance: number,
+  press: boolean,
   grayscale: boolean,
   onProgress?: (frac: number) => void,
 ): Promise<{
@@ -472,6 +480,7 @@ export async function genSeparation(
       autoOrder,
       increments,
       tolerance,
+      press,
       grayscale,
       onProgress,
     );
@@ -485,6 +494,7 @@ export async function genSeparation(
     autoOrder,
     increments,
     tolerance,
+    press,
     onProgress,
   );
   onProgress?.(SVG_UPDATE_END);
