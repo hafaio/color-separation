@@ -30,6 +30,7 @@ import DropModal from "./drop-modal";
 import Editor, { type Action } from "./editor";
 import Footer from "./footer";
 import HelpText from "./help-text";
+import Logo from "./logo";
 import UploadButton from "./upload-button";
 
 const toaster = createToaster({
@@ -314,7 +315,7 @@ export default function App(): ReactElement {
         // separations come back in chosen order; tint with the corresponding
         // (potentially-remapped) render colors.
         const tintColors = chosenOrder.map((idx) => renderPool[idx]);
-        const gridBlob = await genGrid(separations, tintColors);
+        const gridBlob = await genGrid(previewBlob, separations, tintColors);
         const [previewUrl, gridUrl] = await Promise.all([
           blob2url(previewBlob),
           blob2url(gridBlob),
@@ -470,6 +471,7 @@ export default function App(): ReactElement {
         download={download}
         isDownloading={isDownloading}
         setShowRaw={setShowRaw}
+        showGrid={showGrid}
         setShowGrid={setShowGrid}
         rendering={rendering}
       />
@@ -530,7 +532,8 @@ export default function App(): ReactElement {
         <DropModal show={isDragActive} />
         <div className="w-72 h-full p-2 flex flex-col flex-shrink-0 gap-2 bg-slate-50 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700">
           <div className="flex flex-col gap-2 flex-shrink-0">
-            <h1 className="font-bold text-xl text-center">
+            <h1 className="flex items-center justify-center gap-2 font-bold text-xl">
+              <Logo size={26} className="flex-shrink-0" />
               Spot Color Separator
             </h1>
             <UploadButton onFile={onUpload} loading={parsed === null} />
@@ -541,9 +544,10 @@ export default function App(): ReactElement {
         <div className="h-full w-full overflow-auto relative" ref={imgBox}>
           {img}
           {(rendering || isDownloading) && (
-            <div className="absolute top-0 left-0 right-0 h-1 bg-slate-200 dark:bg-slate-700 pointer-events-none">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-slate-200 dark:bg-slate-700 pointer-events-none overflow-hidden">
+              <div className="progress-sweep absolute inset-y-0 left-0 w-1/5 bg-slate-400/60 dark:bg-slate-400/40" />
               <div
-                className="h-full bg-slate-400 dark:bg-slate-500 transition-all duration-100"
+                className="relative h-full bg-slate-400 dark:bg-slate-500 transition-all duration-100"
                 style={{
                   width: `${(isDownloading ? downloadProgress : renderProgress) * 100}%`,
                 }}

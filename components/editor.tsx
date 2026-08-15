@@ -45,6 +45,7 @@ export default function Editor({
   download,
   isDownloading,
   setShowRaw,
+  showGrid,
   setShowGrid,
   rendering,
 }: {
@@ -67,6 +68,7 @@ export default function Editor({
   download: () => void;
   isDownloading: boolean;
   setShowRaw: (val: boolean) => void;
+  showGrid: boolean;
   setShowGrid: (val: boolean) => void;
   rendering: boolean;
 }): ReactElement {
@@ -76,12 +78,9 @@ export default function Editor({
   const onUp = useCallback(() => {
     setShowRaw(false);
   }, [setShowRaw]);
-  const onGridDown = useCallback(() => {
-    setShowGrid(true);
-  }, [setShowGrid]);
-  const onGridUp = useCallback(() => {
-    setShowGrid(false);
-  }, [setShowGrid]);
+  const toggleGrid = useCallback(() => {
+    setShowGrid(!showGrid);
+  }, [setShowGrid, showGrid]);
   const toggleColor = useCallback(
     (color: RgbU32) => {
       modifyColors({ action: "toggle", color });
@@ -135,13 +134,17 @@ export default function Editor({
           Toggle Original
         </button>
         <button
-          className="w-full px-4 py-2 bg-slate-300 hover:bg-slate-400 text-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 dark:text-white rounded disabled:opacity-50 disabled:pointer-events-none"
+          aria-pressed={showGrid}
+          className={`w-full px-4 py-2 rounded disabled:opacity-50 disabled:pointer-events-none ${
+            showGrid
+              ? "bg-slate-700 hover:bg-slate-800 text-white dark:bg-slate-300 dark:hover:bg-slate-200 dark:text-slate-900"
+              : "bg-slate-300 hover:bg-slate-400 text-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 dark:text-white"
+          }`}
           disabled={!selected}
-          onMouseDown={onGridDown}
-          onMouseUp={onGridUp}
+          onClick={toggleGrid}
           type="button"
         >
-          Toggle Channels
+          {showGrid ? "Hide Channels" : "Show Channels"}
         </button>
         <Tooltip.Root>
           <Tooltip.Trigger asChild>
@@ -188,7 +191,7 @@ export default function Editor({
               value={mixingMode}
               onChange={mixingChange}
             >
-              <option value="subtractive">Linear (fast)</option>
+              <option value="subtractive">Subtractive</option>
               <option value="alpha_blend">Alpha blend</option>
               <option value="kubelka_munk" disabled={!kmAvailable}>
                 Kubelka-Munk
@@ -255,10 +258,11 @@ export default function Editor({
             </Slider.Control>
           </Slider.Root>
         </div>
-        <EditorHeader>Color Tolerance</EditorHeader>
+        <EditorHeader>Ink Minimization</EditorHeader>
         <p className="text-slate-600 dark:text-slate-400">
-          How far a color may drift, in just-noticeable steps, if that lets it
-          print with fewer ink layers. Zero is the most accurate.
+          Drop ink layers wherever a color can be rebuilt from fewer of them.
+          Higher settings allow a bigger color shift to save a layer; zero keeps
+          every color as accurate as the palette allows.
         </p>
         <div className="px-4">
           <Slider.Root
