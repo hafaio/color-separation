@@ -2,12 +2,16 @@ import { expect, test } from "bun:test";
 import { formatHex, parse, type Rgb } from "culori";
 import {
   bytesToRgb,
+  byteToLinear,
   colorBytes,
+  culoriToPacked,
+  linearToRgb,
   packRgb,
   type RgbU32,
   rgbToCulori,
 } from "./color";
 import { INKS_BY_ID, RISO_DEFAULTS } from "./inks";
+import { demichelWeights, effectiveCoverage } from "./press";
 import {
   buildKmCache,
   colorSeparation,
@@ -74,6 +78,7 @@ function solveThroughContext(
     counts,
     0,
     tolerance,
+    false,
   );
   const channels = ctx.poolColors.length;
   const prevs = new Uint32Array(counts.size);
@@ -463,4 +468,125 @@ test("subtractive ignores tolerance", () => {
     tolerance: 8,
   });
   expect(loose.opacities).toEqual(tight.opacities);
+});
+
+test("the press multiply forward matches an explicit Neugebauer sum", () => {
+  // The solver's forward decomposes the stack by which ink lands on paper
+  // first, which is only linear-time because the whole suffix collapses into
+  // an ordinary product. Check it against the 2^n sum it stands in for.
+  const pool = ["#ffe800", "#0078bf", "#ff48b0", "#000000"].map(hex);
+  const poolLinear = pool.map((color) => {
+    const { r, g, b } = colorBytes(color);
+    return [byteToLinear(r), byteToLinear(g), byteToLinear(b)] as const;
+  });
+  for (const coverages of [
+    [0.5, 0.5, 0.5, 0.5],
+    [1, 0.5, 0, 0.25],
+    [0.1, 0.9, 0.35, 0.7],
+    [0, 0, 0, 0],
+    [1, 1, 1, 1],
+  ]) {
+    const weights = demichelWeights(coverages, true);
+    const expected = [0, 1, 2].map((axis) => {
+      let total = 0;
+      for (const [mask, weight] of weights.entries()) {
+        let primary = 1;
+        for (const [index, ink] of poolLinear.entries()) {
+          if ((mask >> index) & 1) primary *= ink[axis];
+        }
+        total += weight * primary;
+      }
+      return total;
+    });
+    expect(
+      colorBytes(
+        composeColors(coverages, pool, { mode: "multiply", press: true }),
+      ),
+    ).toEqual(
+      colorBytes(
+        rgbToCulori(linearToRgb([expected[0], expected[1], expected[2]])),
+      ),
+    );
+  }
+});
+
+test("press simulation solves in nominal coverage, not effective", () => {
+  const red = hex("#ff0000");
+  const printed = composeColors([0.5], [red], {
+    mode: "multiply",
+    press: true,
+  });
+  const withPress = colorSeparation(printed, [red], {
+    mode: "multiply",
+    press: true,
+  });
+  expect(withPress.opacities[0]).toBeCloseTo(0.5, 3);
+  // The same appearance without press needs the gained coverage instead, so
+  // the two settings really are solving different problems.
+  const withoutPress = colorSeparation(printed, [red], { mode: "multiply" });
+  expect(withoutPress.opacities[0]).toBeCloseTo(effectiveCoverage(0.5), 3);
+});
+
+test("the quartic coordinate update fits as well as the segment one", () => {
+  // Press simulation changes the forward, so the reachable ΔE00 changes with
+  // it and the two are not required to agree. What is required is that the
+  // quartic update converges as well as the closed-form segment projection it
+  // replaces — a bad root or an unstable descent would show up as a target the
+  // press-on solver suddenly cannot reach.
+  const targets: readonly [number, number, number][] = [
+    [240, 200, 180],
+    [200, 150, 130],
+    [128, 128, 128],
+    [30, 50, 150],
+    [80, 160, 80],
+    [250, 250, 250],
+    [20, 20, 20],
+  ];
+  for (const [red, green, blue] of targets) {
+    const target = bytesToRgb(red, green, blue);
+    const fits = (press: boolean): number[] => [
+      colorSeparation(target, RISO_POOL, { mode: "multiply", press }).deltaE,
+      colorSeparation(target, RISO_POOL, {
+        mode: "kubelka_munk",
+        cache: RISO_KM_CACHE,
+        press,
+      }).deltaE,
+    ];
+    const segment = fits(false);
+    for (const [index, deltaE] of fits(true).entries()) {
+      expect(deltaE).toBeLessThan(segment[index] + 0.5);
+    }
+  }
+});
+
+test("preview and solver share the press setting", () => {
+  const target = packRgb(200, 120, 90);
+  const counts = new Map<RgbU32, number>([[target, 1]]);
+  const ctx = buildSolverContext(
+    new Uint32Array(RISO_WIRE),
+    new Uint32Array(RISO_WIRE),
+    "multiply",
+    false,
+    counts,
+    0,
+    0,
+    true,
+  );
+  const prevs = new Uint32Array(1);
+  const opacs = new Float64Array(RISO_WIRE.length);
+  solveColors(ctx, counts, prevs, opacs, 1, () => {});
+  const opacities = [...opacs];
+  expect(prevs[0]).toBe(
+    culoriToPacked(
+      composeColors(opacities, ctx.renderColors, {
+        mode: "multiply",
+        press: true,
+      }),
+    ),
+  );
+  expect(prevs[0]).not.toBe(
+    culoriToPacked(
+      composeColors(opacities, ctx.renderColors, { mode: "multiply" }),
+    ),
+  );
 });

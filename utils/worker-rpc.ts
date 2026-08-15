@@ -105,6 +105,7 @@ export interface BulkMessage {
   readonly autoOrder: boolean;
   readonly increments: number;
   readonly tolerance: number;
+  readonly press: boolean;
 }
 
 export interface BulkResult {
@@ -121,6 +122,7 @@ export interface RasterMessage {
   readonly autoOrder: boolean;
   readonly increments: number;
   readonly tolerance: number;
+  readonly press: boolean;
   readonly outputType: string;
   readonly grayscale: boolean;
 }

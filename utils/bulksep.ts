@@ -20,6 +20,7 @@ export async function* bulkColorSeparation(
   autoOrder: boolean,
   increments: number,
   tolerance: number,
+  press: boolean,
   onChosenOrder?: (order: readonly number[]) => void,
   onProgress?: (frac: number) => void,
 ): AsyncIterableIterator<[RgbU32, RgbU32, number[]]> {
@@ -39,6 +40,7 @@ export async function* bulkColorSeparation(
       autoOrder,
       increments,
       tolerance,
+      press,
     },
     onProgress,
   );

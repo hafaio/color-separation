@@ -36,6 +36,7 @@ const TIE_EPS = 1e-6; // tolerance for "essentially tied" arm means
 export function findAutoOrder(
   pool: readonly RgbU32[],
   mixingMode: MixingMode,
+  press: boolean,
   colorCounts: ReadonlyMap<RgbU32, number>,
   layers?: readonly SpectralLayer[],
 ): number[] {
@@ -80,9 +81,11 @@ export function findAutoOrder(
     if (mixingMode === "kubelka_munk") {
       const cache = permKmCaches?.[i];
       if (!cache) throw new Error("kubelka_munk race missing cache");
-      return { mode: "kubelka_munk", cache };
+      return { mode: "kubelka_munk", cache, press };
     }
-    return { mode: mixingMode };
+    return mixingMode === "multiply"
+      ? { mode: mixingMode, press }
+      : { mode: mixingMode };
   });
 
   // Ordering only affects how well the whole pool can hit a color, so this

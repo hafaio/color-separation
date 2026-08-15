@@ -50,6 +50,7 @@ export function buildSolverContext(
   counts: ReadonlyMap<RgbU32, number>,
   increments: number,
   tolerance: number,
+  press: boolean,
 ): SolverContext {
   const poolArr: RgbU32[] = Array.from(poolWire) as RgbU32[];
   const renderArr: RgbU32[] = Array.from(renderPoolWire) as RgbU32[];
@@ -57,7 +58,7 @@ export function buildSolverContext(
   const baseLayers = poolArr.map(layerFor);
   const chosenOrder =
     autoOrder && mixingMode !== "subtractive"
-      ? findAutoOrder(poolArr, mixingMode, counts, baseLayers)
+      ? findAutoOrder(poolArr, mixingMode, press, counts, baseLayers)
       : poolArr.map((_, i) => i);
 
   const pool = chosenOrder.map((i) => poolArr[i]);
@@ -67,6 +68,8 @@ export function buildSolverContext(
   const layers = chosenOrder.map((i) => baseLayers[i]);
   const renderLayers = renderPool.map(layerFor);
 
+  // Preview and solver must share a forward model, or the preview would show
+  // something the solver never optimized for.
   const sepOpts: SeparationOptions =
     mixingMode === "kubelka_munk"
       ? {
@@ -74,12 +77,17 @@ export function buildSolverContext(
           cache: buildKmCache(layers),
           increments,
           tolerance,
+          press,
         }
-      : { mode: mixingMode, increments, tolerance };
+      : mixingMode === "multiply"
+        ? { mode: mixingMode, increments, tolerance, press }
+        : { mode: mixingMode, increments, tolerance };
   const composeOpts: ComposeOptions =
     mixingMode === "kubelka_munk"
-      ? { mode: "kubelka_munk", cache: buildKmCache(renderLayers) }
-      : { mode: mixingMode };
+      ? { mode: "kubelka_munk", cache: buildKmCache(renderLayers), press }
+      : mixingMode === "multiply"
+        ? { mode: mixingMode, press }
+        : { mode: mixingMode };
 
   return {
     chosenOrder,

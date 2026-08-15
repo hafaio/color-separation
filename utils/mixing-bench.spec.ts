@@ -45,35 +45,62 @@ function srgbDist(
   return Math.sqrt((a.r - b.r) ** 2 + (a.g - b.g) ** 2 + (a.b - b.b) ** 2);
 }
 
-function optsFor(mode: MixingMode): SeparationOptions {
-  return mode === "kubelka_munk"
-    ? { mode: "kubelka_munk", cache: kmCache }
-    : { mode };
+function optsFor(mode: MixingMode, press: boolean): SeparationOptions {
+  if (mode === "kubelka_munk") {
+    return { mode, cache: kmCache, press };
+  } else if (mode === "multiply") {
+    return { mode, press };
+  } else {
+    return { mode };
+  }
 }
 
-function meanErrorFor(mode: MixingMode): number {
-  const opts = optsFor(mode);
+/** Sweeps often enough that the reported solve time isn't timer resolution. */
+const SWEEPS = 5;
+
+function benchmark(
+  mode: MixingMode,
+  press: boolean,
+): { error: number; millis: number } {
+  const opts = optsFor(mode, press);
   let total = 0;
-  for (const t of TARGETS) {
-    const target = bytesToRgb(t.r, t.g, t.b);
-    const { opacities } = colorSeparation(target, pool, opts);
-    const composed = colorBytes(composeColors(opacities, pool, opts));
-    total += srgbDist({ r: composed.r, g: composed.g, b: composed.b }, t);
+  const started = performance.now();
+  for (let sweep = 0; sweep < SWEEPS; sweep++) {
+    total = 0;
+    for (const t of TARGETS) {
+      const target = bytesToRgb(t.r, t.g, t.b);
+      const { opacities } = colorSeparation(target, pool, opts);
+      const composed = colorBytes(composeColors(opacities, pool, opts));
+      total += srgbDist({ r: composed.r, g: composed.g, b: composed.b }, t);
+    }
   }
-  return total / TARGETS.length;
+  return {
+    error: total / TARGETS.length,
+    millis: (performance.now() - started) / SWEEPS,
+  };
 }
 
 test("benchmark: KM mean reconstruction error vs other modes", () => {
-  const subtractive = meanErrorFor("subtractive");
-  const multiply = meanErrorFor("multiply");
-  const km = meanErrorFor("kubelka_munk");
+  const subtractive = benchmark("subtractive", false);
+  const multiply = benchmark("multiply", false);
+  const km = benchmark("kubelka_munk", false);
+  const multiplyPress = benchmark("multiply", true);
+  const kmPress = benchmark("kubelka_munk", true);
   console.log("");
   console.log(
-    `Mean sRGB reconstruction error across ${TARGETS.length} targets, riso 6 pool:`,
+    `Mean sRGB reconstruction error and solve time across ${TARGETS.length} targets, riso 6 pool:`,
   );
-  console.log(`  subtractive : ${subtractive.toFixed(1)}`);
-  console.log(`  multiply    : ${multiply.toFixed(1)}`);
-  console.log(`  kubelka_munk: ${km.toFixed(1)}`);
+  for (const [name, result] of [
+    ["subtractive        ", subtractive],
+    ["multiply           ", multiply],
+    ["multiply + press   ", multiplyPress],
+    ["kubelka_munk       ", km],
+    ["kubelka_munk +press", kmPress],
+  ] as const) {
+    console.log(
+      `  ${name}: ${result.error.toFixed(1)}  (${result.millis.toFixed(1)} ms)`,
+    );
+  }
   // No ordering is asserted between KM and multiply. KM currently scores
   // slightly worse, and that is expected rather than a regression: its bands
   // are synthesized from each ink's published hex and fitted at load, so it
@@ -82,7 +109,7 @@ test("benchmark: KM mean reconstruction error vs other modes", () => {
   // pay off on overprints instead, which these single-target means don't
   // isolate. Subtractive is excluded outright — its forward is non-physical
   // and fits anything via LP, so its error is misleadingly low.
-  for (const mean of [multiply, km]) {
-    expect(mean).toBeLessThan(15);
+  for (const { error } of [multiply, km, multiplyPress, kmPress]) {
+    expect(error).toBeLessThan(15);
   }
 });

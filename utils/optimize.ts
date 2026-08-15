@@ -52,6 +52,142 @@ export function goldenMin(
   return bestX;
 }
 
+/** Coefficient magnitude below which a leading term is treated as absent. */
+const LEADING_EPSILON = 1e-12;
+
+/** Reused across calls: the solve runs per coordinate in the inner loop. */
+const rootBuffer = [0, 0, 0];
+
+/**
+ * Argument in [0, 1] minimizing `Σ (offset + linear·x + square·x²)²` over the
+ * supplied axes. The objective is a quartic, so every stationary point is a
+ * real root of its cubic derivative, and the constrained minimum is exactly
+ * the best of those roots and the two endpoints.
+ */
+export function minimizeQuadraticResiduals(
+  offset: readonly number[],
+  linear: readonly number[],
+  square: readonly number[],
+): number {
+  let cubic = 0;
+  let quadratic = 0;
+  let slope = 0;
+  let constant = 0;
+  for (let axis = 0; axis < offset.length; axis++) {
+    cubic += 2 * square[axis] ** 2;
+    quadratic += 3 * linear[axis] * square[axis];
+    slope += linear[axis] ** 2 + 2 * offset[axis] * square[axis];
+    constant += offset[axis] * linear[axis];
+  }
+  const roots = cubicRoots(cubic, quadratic, slope, constant, rootBuffer);
+  let best = 0;
+  let bestError = residualError(offset, linear, square, 0);
+  // The endpoint at 1 is the last candidate after the interior roots.
+  for (let index = 0; index <= roots; index++) {
+    const candidate = index === roots ? 1 : rootBuffer[index];
+    if (candidate < 0 || candidate > 1) continue;
+    const error = residualError(offset, linear, square, candidate);
+    if (error < bestError) {
+      bestError = error;
+      best = candidate;
+    }
+  }
+  return best;
+}
+
+function residualError(
+  offset: readonly number[],
+  linear: readonly number[],
+  square: readonly number[],
+  x: number,
+): number {
+  let total = 0;
+  for (let axis = 0; axis < offset.length; axis++) {
+    total += (offset[axis] + x * (linear[axis] + x * square[axis])) ** 2;
+  }
+  return total;
+}
+
+/**
+ * Real roots of `cubic·x³ + square·x² + linear·x + offset`, written into `out`
+ * and counted by the return value. Degenerates to the quadratic and linear
+ * cases as the leading coefficients vanish — which they do exactly, not just
+ * nearly, whenever the caller's problem is really of lower degree. Roots come
+ * out unsorted and may repeat.
+ */
+function cubicRoots(
+  cubic: number,
+  square: number,
+  linear: number,
+  offset: number,
+  out: number[],
+): number {
+  const scale = Math.max(
+    Math.abs(cubic),
+    Math.abs(square),
+    Math.abs(linear),
+    Math.abs(offset),
+  );
+  if (scale === 0) {
+    return 0;
+  } else if (Math.abs(cubic) < LEADING_EPSILON * scale) {
+    return quadraticRoots(square, linear, offset, scale, out);
+  } else {
+    // Depress to t³ + p·t + q with x = t − shift, then Cardano / trigonometry
+    // depending on how many real roots the discriminant admits.
+    const b = square / cubic;
+    const c = linear / cubic;
+    const d = offset / cubic;
+    const shift = b / 3;
+    const p = c - (b * b) / 3;
+    const q = (2 * b * b * b) / 27 - (b * c) / 3 + d;
+    const discriminant = (q * q) / 4 + (p * p * p) / 27;
+    if (discriminant > 0) {
+      const root = Math.sqrt(discriminant);
+      out[0] = Math.cbrt(-q / 2 + root) + Math.cbrt(-q / 2 - root) - shift;
+      return 1;
+    } else if (p > -LEADING_EPSILON) {
+      out[0] = -shift;
+      return 1;
+    } else {
+      const radius = Math.sqrt((-p * p * p) / 27);
+      const phi = Math.acos(Math.max(-1, Math.min(1, -q / (2 * radius))));
+      const amplitude = 2 * Math.sqrt(-p / 3);
+      for (let k = 0; k < 3; k++) {
+        out[k] = amplitude * Math.cos((phi - 2 * Math.PI * k) / 3) - shift;
+      }
+      return 3;
+    }
+  }
+}
+
+function quadraticRoots(
+  square: number,
+  linear: number,
+  offset: number,
+  scale: number,
+  out: number[],
+): number {
+  if (Math.abs(square) < LEADING_EPSILON * scale) {
+    if (Math.abs(linear) < LEADING_EPSILON * scale) {
+      return 0;
+    } else {
+      out[0] = -offset / linear;
+      return 1;
+    }
+  } else {
+    const discriminant = linear * linear - 4 * square * offset;
+    if (discriminant < 0) {
+      return 0;
+    } else {
+      const root = Math.sqrt(discriminant);
+      out[0] = (-linear + root) / (2 * square);
+      out[1] = (-linear - root) / (2 * square);
+      return 2;
+    }
+  }
+}
+
 /**
  * Two-start (zeros + ones) coordinate descent over `n` variables on the unit
  * box. Sweeps until per-sweep error drops below `converge` or `sweeps` is

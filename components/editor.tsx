@@ -42,6 +42,8 @@ export default function Editor({
   setIncrements,
   tolerance,
   setTolerance,
+  press,
+  setPress,
   download,
   isDownloading,
   setShowRaw,
@@ -65,6 +67,8 @@ export default function Editor({
   setIncrements: (inc: number) => void;
   tolerance: number;
   setTolerance: (tolerance: number) => void;
+  press: boolean;
+  setPress: (press: boolean) => void;
   download: () => void;
   isDownloading: boolean;
   setShowRaw: (val: boolean) => void;
@@ -116,6 +120,12 @@ export default function Editor({
       if (isMixingMode(evt.target.value)) setMixingMode(evt.target.value);
     },
     [setMixingMode],
+  );
+  const pressChange = useCallback(
+    (evt: ChangeEvent<HTMLInputElement>) => {
+      setPress(evt.target.checked);
+    },
+    [setPress],
   );
   const selected = [...colors.values()].some(({ active }) => active);
   const exportText = selected
@@ -209,6 +219,27 @@ export default function Editor({
             </Tooltip.Positioner>
           )}
         </Tooltip.Root>
+        {mixingMode !== "subtractive" && (
+          <>
+            <EditorHeader>Press Simulation</EditorHeader>
+            <p className="text-slate-600 dark:text-slate-400">
+              Predicts the midtone darkening and weak overprints of a real
+              duplicator: screened dots spread on absorbent paper, and a dot
+              landing on ink spreads no further. Calibrated from one reference
+              chart, so it is only approximate for any particular machine and
+              paper.
+            </p>
+            <label className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+              <input
+                checked={press}
+                className="w-4 h-4 accent-slate-500"
+                onChange={pressChange}
+                type="checkbox"
+              />
+              Simulate dot gain and trapping
+            </label>
+          </>
+        )}
         <EditorHeader>Ordering</EditorHeader>
         <p className="text-slate-600 dark:text-slate-400">
           Print order of selected colors. First is printed paper-adjacent; last
