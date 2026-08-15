@@ -104,7 +104,7 @@ export interface BulkMessage {
   readonly mixingMode: MixingMode;
   readonly autoOrder: boolean;
   readonly increments: number;
-  readonly lambda: number;
+  readonly tolerance: number;
 }
 
 export interface BulkResult {
@@ -120,7 +120,7 @@ export interface RasterMessage {
   readonly mixingMode: MixingMode;
   readonly autoOrder: boolean;
   readonly increments: number;
-  readonly lambda: number;
+  readonly tolerance: number;
   readonly outputType: string;
   readonly grayscale: boolean;
 }

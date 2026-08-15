@@ -71,7 +71,7 @@ async function runBulkForSvg(
   mixingMode: MixingMode,
   autoOrder: boolean,
   increments: number,
-  lambda: number,
+  tolerance: number,
   onProgress: ((frac: number) => void) | undefined,
 ): Promise<{
   update: Map<RgbU32, RgbU32>;
@@ -93,7 +93,7 @@ async function runBulkForSvg(
     mixingMode,
     autoOrder,
     increments,
-    lambda,
+    tolerance,
     (order) => {
       chosenOrder = order;
     },
@@ -126,7 +126,7 @@ async function rasterPipeline(
   mixingMode: MixingMode,
   autoOrder: boolean,
   increments: number,
-  lambda: number,
+  tolerance: number,
   grayscale: boolean,
   onProgress?: (frac: number) => void,
 ): Promise<{
@@ -143,7 +143,7 @@ async function rasterPipeline(
     mixingMode,
     autoOrder,
     increments,
-    lambda,
+    tolerance,
     outputType: blob.type,
     grayscale,
   };
@@ -337,7 +337,7 @@ export async function genPreviewAndSeparation(
   mixingMode: MixingMode,
   autoOrder: boolean,
   increments: number,
-  lambda: number,
+  tolerance: number,
   onProgress?: (frac: number) => void,
 ): Promise<{
   preview: Blob;
@@ -352,7 +352,7 @@ export async function genPreviewAndSeparation(
       mixingMode,
       autoOrder,
       increments,
-      lambda,
+      tolerance,
       false,
       onProgress,
     );
@@ -364,7 +364,7 @@ export async function genPreviewAndSeparation(
     mixingMode,
     autoOrder,
     increments,
-    lambda,
+    tolerance,
     onProgress,
   );
   onProgress?.(SVG_UPDATE_END);
@@ -445,7 +445,7 @@ export async function genSeparation(
   mixingMode: MixingMode,
   autoOrder: boolean,
   increments: number,
-  lambda: number,
+  tolerance: number,
   grayscale: boolean,
   onProgress?: (frac: number) => void,
 ): Promise<{
@@ -460,7 +460,7 @@ export async function genSeparation(
       mixingMode,
       autoOrder,
       increments,
-      lambda,
+      tolerance,
       grayscale,
       onProgress,
     );
@@ -473,7 +473,7 @@ export async function genSeparation(
     mixingMode,
     autoOrder,
     increments,
-    lambda,
+    tolerance,
     onProgress,
   );
   onProgress?.(SVG_UPDATE_END);

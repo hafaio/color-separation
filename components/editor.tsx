@@ -40,8 +40,8 @@ export default function Editor({
   kmIneligibleNames,
   increments,
   setIncrements,
-  lambda,
-  setLambda,
+  tolerance,
+  setTolerance,
   download,
   isDownloading,
   setShowRaw,
@@ -62,8 +62,8 @@ export default function Editor({
   kmIneligibleNames: readonly string[];
   increments: number;
   setIncrements: (inc: number) => void;
-  lambda: number;
-  setLambda: (lambda: number) => void;
+  tolerance: number;
+  setTolerance: (tolerance: number) => void;
   download: () => void;
   isDownloading: boolean;
   setShowRaw: (val: boolean) => void;
@@ -255,17 +255,18 @@ export default function Editor({
             </Slider.Control>
           </Slider.Root>
         </div>
-        <EditorHeader>Sparsity</EditorHeader>
+        <EditorHeader>Color Tolerance</EditorHeader>
         <p className="text-slate-600 dark:text-slate-400">
-          Bias the separation toward fewer pool colors per output color.
+          How far a color may drift, in just-noticeable steps, if that lets it
+          print with fewer ink layers. Zero is the most accurate.
         </p>
         <div className="px-4">
           <Slider.Root
-            value={[lambda]}
-            onValueChange={(details) => setLambda(details.value[0])}
+            value={[tolerance]}
+            onValueChange={(details) => setTolerance(details.value[0])}
             min={0}
-            max={1}
-            step={0.05}
+            max={8}
+            step={0.5}
           >
             <Slider.Control className="relative flex items-center h-5">
               <Slider.Track className="relative h-2 w-full rounded bg-slate-300 dark:bg-slate-600">

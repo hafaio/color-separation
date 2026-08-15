@@ -78,6 +78,9 @@ function sameActive(
 // miss only costs a recompute.
 const RENDER_CACHE_MAX = 64;
 
+// A couple of ΔE00 buys a big drop in ink layers for nearly-invisible drift.
+const DEFAULT_TOLERANCE = 2;
+
 interface RenderCacheEntry {
   readonly preview: string;
   readonly grid: string;
@@ -91,12 +94,12 @@ function renderKey(
   mixingMode: MixingMode,
   ordering: Ordering,
   increments: number,
-  lambda: number,
+  tolerance: number,
 ): string {
   const pool = orderedActive
     .map(([rgb, state]) => `${rgb}:${state.remap ?? ""}`)
     .join(",");
-  return `${mixingMode}|${ordering}|${increments}|${lambda}|${pool}`;
+  return `${mixingMode}|${ordering}|${increments}|${tolerance}|${pool}`;
 }
 
 export default function App(): ReactElement {
@@ -185,7 +188,7 @@ export default function App(): ReactElement {
   const [preview, setPreview] = useState<string | undefined>();
   const [grid, setGrid] = useState<string | undefined>();
   const [increments, setIncrements] = useState(0);
-  const [lambda, setLambda] = useState(0);
+  const [tolerance, setTolerance] = useState(DEFAULT_TOLERANCE);
   // The most recent worker-chosen print order, used to drive badge numbers
   // and filename indices under `auto` ordering. Stays in sync with whichever
   // render last completed; reset whenever the baseline pool changes.
@@ -268,7 +271,7 @@ export default function App(): ReactElement {
       mixingMode,
       ordering,
       increments,
-      lambda,
+      tolerance,
     );
     const cached = renderCache.current.get(key);
     if (cached) {
@@ -305,7 +308,7 @@ export default function App(): ReactElement {
           mixingMode,
           autoOrder,
           increments,
-          lambda,
+          tolerance,
           reportProgress,
         );
         // separations come back in chosen order; tint with the corresponding
@@ -350,7 +353,7 @@ export default function App(): ReactElement {
     return () => {
       cancelled = true;
     };
-  }, [orderedActive, mixingMode, ordering, increments, parsed, lambda]);
+  }, [orderedActive, mixingMode, ordering, increments, parsed, tolerance]);
 
   const download = useCallback(() => {
     if (parsed) {
@@ -376,7 +379,7 @@ export default function App(): ReactElement {
             mixingMode,
             false,
             increments,
-            lambda,
+            tolerance,
             true,
             reportProgress,
           );
@@ -403,7 +406,7 @@ export default function App(): ReactElement {
         }
       })();
     }
-  }, [parsed, displayOrdered, mixingMode, increments, lambda]);
+  }, [parsed, displayOrdered, mixingMode, increments, tolerance]);
 
   const saveCustom = useCallback(
     (color: CustomColor) => {
@@ -462,8 +465,8 @@ export default function App(): ReactElement {
         kmIneligibleNames={kmIneligibleNames}
         increments={increments}
         setIncrements={setIncrements}
-        lambda={lambda}
-        setLambda={setLambda}
+        tolerance={tolerance}
+        setTolerance={setTolerance}
         download={download}
         isDownloading={isDownloading}
         setShowRaw={setShowRaw}

@@ -9,7 +9,7 @@ serve<BulkMessage, BulkResult>(async (message, onProgress) => {
     mixingMode,
     autoOrder,
     increments,
-    lambda,
+    tolerance,
   } = message;
 
   const ctx = buildSolverContext(
@@ -19,12 +19,12 @@ serve<BulkMessage, BulkResult>(async (message, onProgress) => {
     autoOrder,
     colors,
     increments,
-    lambda,
+    tolerance,
   );
 
   const prevs = new Uint32Array(colors.size);
   const opacs = new Float64Array(colors.size * ctx.poolColors.length);
-  solveColors(ctx, colors.keys(), colors.size, prevs, opacs, 1, onProgress);
+  solveColors(ctx, colors, prevs, opacs, 1, onProgress);
 
   return { prevs, opacs, chosenOrder: ctx.chosenOrder };
 });
