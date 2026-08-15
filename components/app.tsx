@@ -214,11 +214,11 @@ export default function App(): ReactElement {
   );
   const kmAvailable = kmIneligibleNames.length === 0;
   // If the user has KM selected and activates an incompatible ink, fall back
-  // to alpha_blend so we don't keep rendering with a mode the worker can't
+  // to multiply so we don't keep rendering with a mode the worker can't
   // honor. A toast informs the user.
   useEffect(() => {
     if (mixingMode === "kubelka_munk" && !kmAvailable) {
-      setMixingMode("alpha_blend");
+      setMixingMode("multiply");
       toaster.create({
         title: `Switched to alpha-blend: ${kmIneligibleNames.join(", ")} ${kmIneligibleNames.length === 1 ? "is" : "are"} not KM-eligible`,
         type: "error",

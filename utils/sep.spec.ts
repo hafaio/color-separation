@@ -194,7 +194,7 @@ test("underconstrained linear black", () => {
 test("alpha-blend white", () => {
   const colors = ["#ff0000", "#00ff00", "#0000ff"].map(hex);
   const { opacities, error } = colorSeparation(hex("#ffffff"), colors, {
-    mode: "alpha_blend",
+    mode: "multiply",
   });
   expect(error).toBeLessThan(1e-3);
   for (const a of opacities) expect(a).toBeCloseTo(0);
@@ -203,24 +203,28 @@ test("alpha-blend white", () => {
 test("alpha-blend solid black", () => {
   const colors = [hex("#000000")];
   const { opacities, error } = colorSeparation(hex("#000000"), colors, {
-    mode: "alpha_blend",
+    mode: "multiply",
   });
   expect(opacities[0]).toBeCloseTo(1);
   expect(error).toBeLessThan(1e-3);
 });
 
-test("alpha-blend top layer dominates order", () => {
+test("multiply overprints darken and ignore order", () => {
   const yellow = hex("#ffe800");
   const blue = hex("#0078bf");
-  // Blue on top → mostly blue; yellow on top → mostly yellow.
+  // Filters compose, so neither ink survives intact and the stack is darker
+  // than either alone — the behavior alpha-over could not produce.
   const blueTop = colorBytes(
-    composeColors([1, 1], [yellow, blue], { mode: "alpha_blend" }),
+    composeColors([1, 1], [yellow, blue], { mode: "multiply" }),
   );
   const yellowTop = colorBytes(
-    composeColors([1, 1], [blue, yellow], { mode: "alpha_blend" }),
+    composeColors([1, 1], [blue, yellow], { mode: "multiply" }),
   );
-  expect(blueTop.b).toBeGreaterThan(blueTop.r);
-  expect(yellowTop.r).toBeGreaterThan(yellowTop.b);
+  expect(blueTop).toEqual(yellowTop);
+  for (const channel of ["r", "g", "b"] as const) {
+    expect(blueTop[channel]).toBeLessThanOrEqual(colorBytes(yellow)[channel]);
+    expect(blueTop[channel]).toBeLessThanOrEqual(colorBytes(blue)[channel]);
+  }
 });
 
 test("alpha-blend continuous recovers single-ink coverage", () => {
@@ -228,10 +232,10 @@ test("alpha-blend continuous recovers single-ink coverage", () => {
   // Round-trip through linearize/blend/encode to get the exact target.
   const red = hex("#ff0000");
   const halfRedComposited = composeColors([0.5], [red], {
-    mode: "alpha_blend",
+    mode: "multiply",
   });
   const { opacities, error } = colorSeparation(halfRedComposited, [red], {
-    mode: "alpha_blend",
+    mode: "multiply",
   });
   expect(opacities[0]).toBeCloseTo(0.5, 2);
   expect(error).toBeLessThan(1e-3);
@@ -240,7 +244,7 @@ test("alpha-blend continuous recovers single-ink coverage", () => {
 test("alpha-blend grid search rounds to lattice", () => {
   const red = hex("#ff0000");
   const { opacities } = colorSeparation(hex("#ff8080"), [red], {
-    mode: "alpha_blend" as const,
+    mode: "multiply" as const,
     increments: 4,
   });
   // Should snap to one of {0, 0.25, 0.5, 0.75, 1}.

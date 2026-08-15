@@ -181,8 +181,9 @@ export default function Editor({
         />
         <EditorHeader>Mixing</EditorHeader>
         <p className="text-slate-600 dark:text-slate-400">
-          How overlapping inks combine. Alpha-blend respects print order;
-          Kubelka-Munk models spectral absorption and fluorescence.
+          How overlapping inks combine. Multiply treats inks as filters, so
+          overprinting darkens; Kubelka-Munk does the same from measured
+          spectra, and is the only one that handles fluorescent inks.
         </p>
         <Tooltip.Root>
           <Tooltip.Trigger asChild>
@@ -192,7 +193,7 @@ export default function Editor({
               onChange={mixingChange}
             >
               <option value="subtractive">Subtractive</option>
-              <option value="alpha_blend">Alpha blend</option>
+              <option value="multiply">Multiply</option>
               <option value="kubelka_munk" disabled={!kmAvailable}>
                 Kubelka-Munk
                 {kmAvailable ? "" : " (incompatible inks)"}
