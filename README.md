@@ -18,11 +18,10 @@ trading accuracy for speed.
 - **Subtractive** — ink amounts add linearly in encoded sRGB. Not physical, but
   it fits nearly any target exactly and solves as a linear program, so it is by
   far the fastest.
-- **Alpha blend** — each ink replaces a fraction of what is under it, starting
-  from paper white. This is the compositing operator from image editors, and it
-  models an opaque colorant covering the layer below. Overprinting cannot
-  darken under it: the result is always a blend of the colors present, so blue
-  over red is just blue.
+- **Multiply** — each ink is a filter, so overlapping inks multiply and the
+  stack darkens: yellow over blue gives green, blue over red gives a dark plum.
+  Built from each ink's published color, so it needs no spectral data.
+  Order-independent, and it can only darken.
 - **Kubelka-Munk** — treats inks as filters, over 36 spectral bands from
   calibrated ink data, with fluorescence. Light passes down through each film,
   reflects off the paper, and passes back up, so overlapping inks multiply and
@@ -43,10 +42,12 @@ Controls
 Known limits
 ------------
 
-- White and metallic inks are not really modeled. They work by scattering
-  light, and the spectral model only accounts for absorption, so white reads as
-  a near no-op there. Alpha blend is the only model that lightens, and it does
-  so by covering rather than by scattering.
+- White and metallic inks are not modeled. They work by scattering light, and
+  every model here only removes light, so white is a near no-op in all three.
+- Fluorescent inks emit light as well as absorbing it, so only Kubelka-Munk,
+  which carries an explicit emission term, gets them close.
+- Real overprints come out slightly lighter than Multiply predicts, because a
+  second ink transfers less onto already-inked paper than onto bare stock.
 - Paper is assumed to be white.
 
 To Do

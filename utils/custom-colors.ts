@@ -9,7 +9,7 @@
  *
  * Custom colors carry no spectral metadata — the worker's `layerFor`
  * fallback already treats unknown RGBs as transparent layers, which is
- * correct for `subtractive` / `alpha_blend` (those modes mix on RGB
+ * correct for `subtractive` / `multiply` (those modes mix on RGB
  * directly) and which the `kmEligible` check elsewhere prevents from being
  * used in `kubelka_munk` mode.
  */

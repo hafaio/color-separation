@@ -4,8 +4,8 @@
  *
  * - `subtractive`: order-independent linear-in-encoded-sRGB compositing.
  *   Non-physical but fits any target exactly via LP.
- * - `alpha_blend`: order-dependent layered alpha-over in linear sRGB.
- *   Coordinate descent with closed-form 1D updates.
+ * - `multiply`: inks as filters whose transmittances multiply, in linear sRGB.
+ *   Order-independent. Coordinate descent with closed-form 1D updates.
  * - `kubelka_munk`: dithered-halftone physics via the Neugebauer-Demichel
  *   model layered on single-constant K-M, with optional fluorescence.
  *
@@ -63,7 +63,7 @@ export function buildKmCache(layers: readonly SpectralLayer[]): KmCache {
 
 export const MIXING_MODES = [
   "subtractive",
-  "alpha_blend",
+  "multiply",
   "kubelka_munk",
 ] as const;
 export type MixingMode = (typeof MIXING_MODES)[number];
@@ -171,8 +171,18 @@ function delinearize(lin: LinearRgb): Rgb {
   return rgbToCulori(linearToRgb(lin));
 }
 
-/** Alpha-over forward pass starting from paper white (1,1,1) in linear sRGB. */
-function alphaForward(
+/**
+ * Each ink is a filter: light passes down through every film, reflects off the
+ * paper, and passes back up, so the layers' transmittances multiply. Coverage
+ * `a` mixes each film's transmittance toward clear, which expands to the
+ * Neugebauer-Demichel weights over multiplicative primaries.
+ *
+ * Ink colors are measured as solids on white paper, so the down-and-back trip
+ * is already folded into them and needs no second factor here. Paper is
+ * assumed white. Order-independent, unlike a real press, and it can only
+ * darken — opaque and fluorescent inks are outside what it can express.
+ */
+function multiplyForward(
   opacities: readonly number[],
   poolLinear: readonly LinearRgb[],
 ): LinearRgb {
@@ -182,9 +192,9 @@ function alphaForward(
   for (let i = 0; i < opacities.length; i++) {
     const a = opacities[i];
     const [cr, cg, cb] = poolLinear[i];
-    r = (1 - a) * r + a * cr;
-    g = (1 - a) * g + a * cg;
-    b = (1 - a) * b + a * cb;
+    r *= 1 - a + a * cr;
+    g *= 1 - a + a * cg;
+    b *= 1 - a + a * cb;
   }
   return [r, g, b];
 }
@@ -219,16 +229,16 @@ function projectAlpha(
   }
 }
 
-function updateAlphaCoord(
+function updateMultiplyCoord(
   index: number,
   alphas: number[],
   target: LinearRgb,
   poolLinear: readonly LinearRgb[],
 ): void {
   alphas[index] = 0;
-  const at0 = alphaForward(alphas, poolLinear);
+  const at0 = multiplyForward(alphas, poolLinear);
   alphas[index] = 1;
-  const at1 = alphaForward(alphas, poolLinear);
+  const at1 = multiplyForward(alphas, poolLinear);
   alphas[index] = projectAlpha(target, at0, at1);
 }
 
@@ -254,7 +264,7 @@ interface CoordTuning {
   readonly converge: number;
 }
 
-const ALPHA_TUNING: CoordTuning = {
+const MULTIPLY_TUNING: CoordTuning = {
   gridBudget: 5000,
   sweeps: 30,
   converge: 1e-5,
@@ -409,25 +419,28 @@ function alphaModeSolver(
     solve: (inks) => {
       const subPool = inks.map((ink) => poolLinear[ink]);
       const errorAt = (alphas: readonly number[]): number =>
-        squaredError(alphaForward(alphas, subPool), targetLinear);
+        squaredError(multiplyForward(alphas, subPool), targetLinear);
       const sub = solveCoords(
         inks.length,
         increments,
-        ALPHA_TUNING,
+        MULTIPLY_TUNING,
         (index, alphas) =>
-          updateAlphaCoord(index, alphas, targetLinear, subPool),
+          updateMultiplyCoord(index, alphas, targetLinear, subPool),
         errorAt,
       );
       return expandOpacities(sub, inks, poolLinear.length);
     },
     deltaEOf: (opacities) =>
-      deltaE2000(target, linearToCulori(alphaForward(opacities, poolLinear))),
-    compose: (opacities) => delinearize(alphaForward(opacities, poolLinear)),
+      deltaE2000(
+        target,
+        linearToCulori(multiplyForward(opacities, poolLinear)),
+      ),
+    compose: (opacities) => delinearize(multiplyForward(opacities, poolLinear)),
     // Per-channel RMS in linear sRGB [0, 1] — same [0, 1] scale as the
     // subtractive path's L1 error so the two are roughly comparable.
     errorOf: (opacities) =>
       Math.sqrt(
-        squaredError(alphaForward(opacities, poolLinear), targetLinear) / 3,
+        squaredError(multiplyForward(opacities, poolLinear), targetLinear) / 3,
       ),
   };
 }
@@ -494,7 +507,7 @@ interface SubtractiveSepOpts extends CommonSepOpts {
 }
 
 interface AlphaBlendSepOpts extends CommonSepOpts {
-  readonly mode: "alpha_blend";
+  readonly mode: "multiply";
 }
 
 interface KubelkaMunkSepOpts extends CommonSepOpts {
@@ -671,7 +684,7 @@ function subtractiveMasked(
  */
 export type ComposeOptions =
   | { readonly mode: "subtractive" }
-  | { readonly mode: "alpha_blend" }
+  | { readonly mode: "multiply" }
   | { readonly mode: "kubelka_munk"; readonly cache: KmCache };
 
 export function composeColors(
@@ -680,8 +693,8 @@ export function composeColors(
   opts: ComposeOptions = { mode: "subtractive" },
 ): Rgb {
   if (opts.mode === "kubelka_munk") return kmCompose(opacities, opts.cache);
-  if (opts.mode === "alpha_blend")
-    return delinearize(alphaForward(opacities, pool.map(linearize)));
+  if (opts.mode === "multiply")
+    return delinearize(multiplyForward(opacities, pool.map(linearize)));
   return subtractiveCompose(opacities, pool);
 }
 
