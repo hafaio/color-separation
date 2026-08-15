@@ -1,1 +1,23 @@
 @import "tailwindcss";
+
+/* Keeps the progress bar legible as "working" while the fill is still near
+   zero, which is most of a long solve. The end offset clears the track by a
+   full sweep width so the trailing edge leaves rather than popping. */
+@keyframes progress-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(500%);
+  }
+}
+
+.progress-sweep {
+  animation: progress-sweep 1.7s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-sweep {
+    display: none;
+  }
+}

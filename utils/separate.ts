@@ -396,11 +396,19 @@ function tintSeparation(img: HTMLImageElement, color: RgbU32): OffscreenCanvas {
   return canvas;
 }
 
+/**
+ * Tile the composite and every channel into one image. The composite leads so
+ * there is something to compare the channels against; it is already in color,
+ * so only the channels get tinted.
+ */
 export async function genGrid(
+  composite: Blob,
   separations: readonly Blob[],
   colors: readonly RgbU32[],
 ): Promise<Blob> {
-  const urls = separations.map((sep) => URL.createObjectURL(sep));
+  const urls = [composite, ...separations].map((sep) =>
+    URL.createObjectURL(sep),
+  );
   try {
     const images = await Promise.all(
       urls.map(
@@ -428,8 +436,11 @@ export async function genGrid(
       const cellY = row * cellHeight;
       const dx = cellX + (cellWidth - img.naturalWidth) / 2;
       const dy = cellY + (cellHeight - img.naturalHeight) / 2;
-      const tinted = tintSeparation(img, colors[index]);
-      ctx.drawImage(tinted, dx, dy);
+      ctx.drawImage(
+        index === 0 ? img : tintSeparation(img, colors[index - 1]),
+        dx,
+        dy,
+      );
     }
     return await canvas.convertToBlob({ type: "image/png" });
   } finally {
