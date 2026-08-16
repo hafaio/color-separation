@@ -223,7 +223,7 @@ export default function App(): ReactElement {
     if (mixingMode === "kubelka_munk" && !kmAvailable) {
       setMixingMode("multiply");
       toaster.create({
-        title: `Switched to alpha-blend: ${kmIneligibleNames.join(", ")} ${kmIneligibleNames.length === 1 ? "is" : "are"} not KM-eligible`,
+        title: `Switched to Multiply: no Kubelka-Munk calibration for ${kmIneligibleNames.join(", ")}`,
         type: "error",
       });
     }

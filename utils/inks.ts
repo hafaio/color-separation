@@ -9,20 +9,45 @@
  * (hex_synthesized) K-bands that approximate single-ink color but are
  * unreliable for overprint physics.
  *
+ * The `measured` inks work the other way round. A spectrophotometer read
+ * their printed solids, `measured-spectra.ts` carries the readings, and their
+ * K(λ) is inverted straight out of one — no bands, no amplitudes, nothing for
+ * the hex to shape. What a reading cannot say is how thick a film the press
+ * that printed it laid down, and that is the one thing the hex still sets, so
+ * for these inks the hex slides the whole spectrum along a single axis and
+ * reaches nothing else. Their `kmDeltaE` therefore reads differently from
+ * everyone else's: not how well a template fitted, but how far riso's
+ * published swatch sits from the ink an instrument saw.
+ *
  * A few inks share an rgb (wine ↔ burgundy, tomato ↔ marine red, raspberry
  * red ↔ cranberry). These collide as keys in the downstream colors map, so
  * INKS_BY_RGB keeps the first occurrence; the alternate entries stay in
  * INKS so their distinct K-bands remain available for ID-based lookup.
+ *
+ * `scatter` is the exception, not the default: an ink without it is a
+ * transparent absorber (S = 0). Riso's SDS name only three colorants across
+ * the catalogue — carbon black, titanium dioxide, and copper/zinc flake —
+ * and everything else is "organic pigment, trade secret". Trade-secret
+ * organics of this class are transparent by construction (Johnston-Feller,
+ * Color Science in the Examination of Museum Objects, Getty 2001; the LBNL
+ * Pigment Database describes phthalos, dioxazine, hansa/diarylide yellows,
+ * organic reds and carbon black as weakly scattering / "dyelike"), and the
+ * halftone-prediction literature models process inks as non-scattering
+ * films throughout (Hébert & Hersch, Color Research & Application, 2015).
+ * So the omission is derived, not defaulted.
  */
 
 import { hexToRgb, type RgbU32 } from "../utils/color";
+import { MEASURED_FILMS } from "../utils/measured-spectra";
 import {
+  absorptionFromFilm,
   calibrateKScale,
   type FluorescenceParams,
   type KBand,
+  type ScatterSpec,
 } from "../utils/spectral";
 
-export type { FluorescenceParams, KBand };
+export type { FluorescenceParams, KBand, ScatterSpec };
 
 export type Confidence = "certain" | "high" | "medium" | "low" | "fluorescent";
 
@@ -32,11 +57,29 @@ export type MixingMethod =
   | "alpha_blend_only"
   | "transparent";
 
+/** Where an ink's K(λ) came from. `measured` is the one that is not a guess:
+ *  it means a spectrophotometer read the printed solid, `measured-spectra.ts`
+ *  carries the reading, and the ink has no kBands at all — there is nothing
+ *  left for a pigment template to say. */
 export type KBandsSource =
   | "pigment_template"
   | "hex_synthesized"
   | "transparent_extender"
   | "measured";
+
+/** Where an ink's scattering came from — `sds_tio2` means TiO₂ is named in
+ *  Riso's own safety data sheet, `tio2_inferred` that only the color makes
+ *  it near-certain. Neither pins the magnitude; see `InkScatter.confidence`. */
+export type ScatterSource = "sds_tio2" | "tio2_inferred" | "measured";
+
+export interface InkScatter extends ScatterSpec {
+  readonly source: ScatterSource;
+  /** Confidence in `sd`, not in the presence of scattering. Riso publishes
+   *  neither pigment loading nor deposited film thickness, so an inferred
+   *  value here is an order-of-magnitude bracket; only gray's is inverted
+   *  from overprints, and even that reads differently on two substrates. */
+  readonly confidence: Confidence;
+}
 
 /** Max calibrated ΔE between predicted-at-α=1 and the ink's published hex
  * for KM mode to be offered. Fluorescent inks get a looser bound because
@@ -56,18 +99,32 @@ interface InkRaw {
   readonly kBandsSource?: KBandsSource;
   readonly baseline?: number;
   readonly kScale?: number;
+  /** Absent means the ink scatters negligibly — see the file header. */
+  readonly scatter?: InkScatter;
   readonly fluorescence?: FluorescenceParams;
   readonly notes?: string;
 }
 
 export interface Ink extends InkRaw {
   readonly rgb: RgbU32;
-  /** kScale after calibration to match the published hex at α=1. */
+  /** Per-bin K·D from this ink's measured solid, for `kBandsSource:
+   *  "measured"` inks only. Present means the hex never touched the shape. */
+  readonly kSpectrum?: readonly number[];
+  /** kScale after calibration to match the published hex at α=1: the amplitude
+   *  of K, and the only thing the hex is allowed to set. Not a film thickness
+   *  — it leaves scattering alone, since absorption comes from the colorant
+   *  and scattering from the TiO₂, in a ratio that is each ink's own. */
   readonly kScale: number;
   /** ΔE between calibrated KM prediction and target hex; lower is better. */
   readonly kmDeltaE: number;
-  /** True when the calibrated KM prediction is within tolerance of the hex.
-   *  Inks where this is false should not be available in KM mode. */
+  /** Certifies one thing: a full-coverage patch of this ink, rendered through
+   *  the KM pipeline and then the display gamut map, lands within tolerance of
+   *  the ink's published appearance. That is a preview-consistency contract,
+   *  not evidence that KM models the ink well — the fit is anchored to a
+   *  single hex at α=1, so it says nothing about tints, overprints, or the
+   *  ink's real spectrum, and no hex-anchored fit ever could. Inks where this
+   *  is false should not be offered in KM mode; inks where it is true have
+   *  only cleared that one bar. */
   readonly kmEligible: boolean;
 }
 
@@ -211,6 +268,22 @@ const INKS_RAW: readonly InkRaw[] = [
     baseline: 0.026,
     kScale: 5.0,
     kBandsSource: "pigment_template",
+    // A flatbed scan of RISOTTO's on-black swatch page puts aqua at 3.4× the
+    // page's own luminance, which a transparent absorber cannot do at all.
+    // Measured gray fixes the one unknown that reading has — the page
+    // reflects 0.025, the value that makes gray's own 3.2× come out right —
+    // and aqua then needs S·D = 0.11, bracketed 0.08–0.15 by carrying ±25%
+    // through the anchor. Low confidence: one luminance ratio off a
+    // photograph. The on-steel page agrees here (0.63 predicted against 0.66
+    // read), which is the only reason to prefer the bracket's middle over
+    // its top — see mint, where it does not. `tilt` is gray's measured one,
+    // transferred with the TiO₂ it shares.
+    scatter: {
+      sd: 0.11,
+      tilt: 2.0,
+      source: "tio2_inferred",
+      confidence: "low",
+    },
   },
   {
     id: "cornflower",
@@ -275,14 +348,9 @@ const INKS_RAW: readonly InkRaw[] = [
     mixingMethod: "kubelka_munk",
     pigmentGuess: "PB15:3",
     pigmentNotes: "Standard process blue; phthalocyanine beta form",
-    kBands: [
-      { center: 620, width: 50, amplitude: 1.0 },
-      { center: 690, width: 30, amplitude: 0.7 },
-      { center: 380, width: 50, amplitude: 0.3 },
-    ],
-    baseline: 0.02,
-    kScale: 5.0,
-    kBandsSource: "pigment_template",
+    kBandsSource: "measured",
+    notes:
+      "RISO_MZ770_BlueFPinkYellow; six profiles agree on the 620 nm peak to ±2%",
   },
   {
     id: "lake",
@@ -543,17 +611,7 @@ const INKS_RAW: readonly InkRaw[] = [
     mixingMethod: "kubelka_munk",
     pigmentGuess: "PB15:3 + PG7",
     pigmentNotes: "Phthalo blue + phthalo green",
-    kBands: [
-      { center: 620, width: 50, amplitude: 1.0 },
-      { center: 690, width: 30, amplitude: 0.7 },
-      { center: 380, width: 50, amplitude: 0.3 },
-      { center: 600, width: 60, amplitude: 0.5 },
-      { center: 700, width: 40, amplitude: 0.3 },
-      { center: 410, width: 40, amplitude: 0.3 },
-    ],
-    baseline: 0.03,
-    kScale: 5.0,
-    kBandsSource: "pigment_template",
+    kBandsSource: "measured",
   },
   {
     id: "light-teal",
@@ -634,6 +692,21 @@ const INKS_RAW: readonly InkRaw[] = [
     baseline: 0.026,
     kScale: 5.0,
     kBandsSource: "pigment_template",
+    // A flatbed scan of RISOTTO's on-black swatch page puts mint at 3.6× the
+    // page's own luminance, which a transparent absorber cannot do at all.
+    // Measured gray fixes the one unknown that reading has — the page
+    // reflects 0.025, the value that makes gray's own 3.2× come out right —
+    // and mint then needs S·D = 0.11. Bracketed 0.08–0.14 by carrying ±25%
+    // through that anchor, at low confidence because it is one luminance
+    // ratio off a photograph, and the on-steel page wants more still (0.73
+    // predicted against 0.91 read), so the bracket is likelier low than high.
+    // `tilt` is gray's measured one, transferred with the TiO₂ it shares.
+    scatter: {
+      sd: 0.11,
+      tilt: 2.0,
+      source: "tio2_inferred",
+      confidence: "low",
+    },
   },
   {
     id: "grass",
@@ -700,16 +773,7 @@ const INKS_RAW: readonly InkRaw[] = [
     mixingMethod: "kubelka_munk",
     pigmentGuess: "PG7 + PY74",
     pigmentNotes: "Phthalo green + Hansa yellow",
-    kBands: [
-      { center: 600, width: 60, amplitude: 1.0 },
-      { center: 700, width: 40, amplitude: 0.6 },
-      { center: 410, width: 40, amplitude: 0.6 },
-      { center: 430, width: 35, amplitude: 0.5 },
-      { center: 380, width: 30, amplitude: 0.35 },
-    ],
-    baseline: 0.025,
-    kScale: 5.0,
-    kBandsSource: "pigment_template",
+    kBandsSource: "measured",
   },
   {
     id: "kelly-green",
@@ -780,13 +844,7 @@ const INKS_RAW: readonly InkRaw[] = [
     mixingMethod: "kubelka_munk",
     pigmentGuess: "PY74",
     pigmentNotes: "Hansa Yellow 5GX, standard print yellow",
-    kBands: [
-      { center: 430, width: 35, amplitude: 1.0 },
-      { center: 380, width: 30, amplitude: 0.7 },
-    ],
-    baseline: 0.01,
-    kScale: 8.0,
-    kBandsSource: "pigment_template",
+    kBandsSource: "measured",
   },
   {
     id: "fluorescent-yellow",
@@ -967,15 +1025,7 @@ const INKS_RAW: readonly InkRaw[] = [
     mixingMethod: "kubelka_munk",
     pigmentGuess: "PR254 + PR170",
     pigmentNotes: "Red with slight blue undertone",
-    kBands: [
-      { center: 510, width: 50, amplitude: 1.0 },
-      { center: 410, width: 50, amplitude: 0.5 },
-      { center: 520, width: 55, amplitude: 0.3 },
-      { center: 420, width: 50, amplitude: 0.18 },
-    ],
-    baseline: 0.039,
-    kScale: 5.0,
-    kBandsSource: "pigment_template",
+    kBandsSource: "measured",
   },
   {
     id: "bright-red",
@@ -1409,14 +1459,33 @@ const INKS_RAW: readonly InkRaw[] = [
     id: "white",
     name: "white",
     hex: "#ffffff",
-    confidence: "certain",
+    confidence: "high",
     mixingMethod: "kubelka_munk",
     pigmentGuess: "PW6",
-    pigmentNotes: "Titanium dioxide, disclosed in Riso SDS",
+    pigmentNotes:
+      "Titanium dioxide inferred; S-4722 has no published SDS in the US, UK or JP indexes",
     kBands: [{ center: 400, width: 30, amplitude: 0.3 }],
     baseline: 0.0,
     kScale: 0.5,
     kBandsSource: "pigment_template",
+    // Transferred from gray, the one TiO₂ film that was measured, exactly as
+    // granite and light-gray are: Riso's SDS describes gray as this white
+    // tinted with under 1% carbon black, so the two carry the same pigment at
+    // close to the same loading. An earlier 0.25 argued from opacity that
+    // white must scatter *more* than its own tint, which reads plausibly but
+    // is the one number here no observation supports.
+    //
+    // White carries almost no absorption, so scattering alone shapes it and
+    // the tilt shows up undiluted: white over black reads blue-grey, TiO₂'s
+    // known undertone. Only a flat spectrum renders it neutral, and gray's
+    // overprint rules flat out; if real prints disagree, white needs its own
+    // over-black patch rather than a number chosen to look right.
+    scatter: {
+      sd: 0.16,
+      tilt: 2.0,
+      source: "tio2_inferred",
+      confidence: "low",
+    },
   },
   {
     id: "clear-medium",
@@ -1437,12 +1506,42 @@ const INKS_RAW: readonly InkRaw[] = [
     hex: "#928d88",
     confidence: "high",
     mixingMethod: "kubelka_munk",
-    pigmentGuess: "PBk7 (diluted)",
-    pigmentNotes: "Diluted carbon black; tint variant",
-    kBands: [{ center: 550, width: 1000, amplitude: 1.0 }],
-    baseline: 0.0,
-    kScale: 50.0,
-    kBandsSource: "pigment_template",
+    pigmentGuess: "PW6 + PBk7",
+    pigmentNotes:
+      "Riso SDS discloses titanium dioxide up to 20 wt% plus under 1% carbon black — a white ink tinted black, not a diluted one",
+    kBandsSource: "measured",
+    notes:
+      "DuploPress_MultiColor_BlueGray; K inverted against the assigned scatter",
+    // The one scattering magnitude in the table that was measured rather than
+    // argued. Inverting the {gray on paper, gray over blue solid} pair bin by
+    // bin — two substrates 40× apart in reflectance under one film separate ρ
+    // from τ — gives S·D = 0.16 at 550 nm, where this shipped 0.25. The
+    // RISOTTO on-black scan agrees independently at 0.12–0.20.
+    //
+    // Read it as an upper bound, not an estimate. The same inversion against
+    // a *black* solid — flatter and far darker, so it reads ρ almost directly
+    // — comes back at 0.083 once the two sheets' ink lays are equalized
+    // through gray's own absorption. Half, not a rounding difference, and the
+    // black sheet's fit is the tighter of the two. Both readings are kept and
+    // neither is averaged into the other; 0.16 ships because the bracket was
+    // drawn around the blue substrate, but the bracket widens to 0.08–0.20 to
+    // admit what the darker one says.
+    //
+    // The gap is where a first-surface reflection is hiding. Every transparent
+    // ink in the collection inverts to a ρ floor of 0.03–0.05 over black —
+    // yellow and red included, which the file header argues do not scatter —
+    // and over a bright substrate that floor is invisible next to τ² while
+    // over a dark one it is most of the signal. `spectral.ts` has no
+    // Saunderson term for it to live in, so it is folded in here, and that is
+    // the disagreement rather than gray behaving differently on two presses.
+    //
+    // `tilt` is measured over the blue substrate: S falls from 0.32 at 470 nm
+    // to 0.10 at 620 nm, a power law fits that 2.3× better than a flat S, and
+    // fitting the exponent free lands on 2.1 — which is why the table's
+    // universal 2.0 sits where it does. Over black the free fit prefers flat,
+    // but a flat floor and a flat S are the same curve there, so it cannot
+    // discriminate.
+    scatter: { sd: 0.16, tilt: 2.0, source: "measured", confidence: "medium" },
   },
   {
     id: "granite",
@@ -1451,7 +1550,7 @@ const INKS_RAW: readonly InkRaw[] = [
     confidence: "medium",
     mixingMethod: "kubelka_munk",
     pigmentGuess: "PBk7 + PW6",
-    pigmentNotes: "Carbon black + titanium white",
+    pigmentNotes: "Carbon black + titanium white; no SDS of its own",
     kBands: [
       { center: 550, width: 1000, amplitude: 1.0 },
       { center: 400, width: 30, amplitude: 0.06 },
@@ -1459,6 +1558,16 @@ const INKS_RAW: readonly InkRaw[] = [
     baseline: 0.0,
     kScale: 50.0,
     kBandsSource: "pigment_template",
+    // Transferred from gray's measurement, which is the same TiO₂ tinted with
+    // the same carbon black. `source` still says how we know it scatters at
+    // all, which is unchanged; the magnitude is now a sibling's measurement
+    // rather than an order-of-magnitude guess, which is the confidence.
+    scatter: {
+      sd: 0.16,
+      tilt: 2.0,
+      source: "tio2_inferred",
+      confidence: "medium",
+    },
   },
   {
     id: "light-gray",
@@ -1466,12 +1575,16 @@ const INKS_RAW: readonly InkRaw[] = [
     hex: "#88898a",
     confidence: "high",
     mixingMethod: "kubelka_munk",
-    pigmentGuess: "PBk7 (heavily diluted)",
-    pigmentNotes: "Same as gray, more transparent",
+    pigmentGuess: "PW6 + PBk7",
+    pigmentNotes: "Same disclosed TiO₂ + carbon black pair as gray, lighter",
     kBands: [{ center: 550, width: 1000, amplitude: 1.0 }],
     baseline: 0.0,
     kScale: 50.0,
     kBandsSource: "pigment_template",
+    // Same transfer as granite, on a stronger footing: the SDS names the same
+    // TiO₂ and carbon black pair gray discloses, so this is the measured ink
+    // at a different tint rather than a look-alike.
+    scatter: { sd: 0.16, tilt: 2.0, source: "sds_tio2", confidence: "medium" },
   },
   {
     id: "charcoal",
@@ -1503,17 +1616,32 @@ const INKS_RAW: readonly InkRaw[] = [
     baseline: 0.0,
     kScale: 50.0,
     kBandsSource: "pigment_template",
+    notes:
+      "Measured in RISO_MZ770_RedBlack but not calibrated from it — see MEASURED_BLACK_FILM",
   },
 ];
 
 export const INKS: readonly Ink[] = INKS_RAW.map((ink) => {
-  // Calibrate KM params (kScale, baseline, per-band amplitudes) to match the
-  // ink's hex at α=1. Raw values in the table are starting estimates; band
-  // positions/widths stay fixed (those come from pigment chemistry).
+  const film = MEASURED_FILMS.get(ink.id);
+  if ((ink.kBandsSource === "measured") !== (film !== undefined)) {
+    throw new Error(
+      `${ink.id}: kBandsSource "${ink.kBandsSource}" disagrees with the ` +
+        `measured films — the two must be edited together`,
+    );
+  }
+  // A measured ink's K(λ) is inverted out of its own reading and calibration
+  // may only scale it. Everything else has no reading, so its K comes from a
+  // pigment template whose band positions and widths are fixed chemistry and
+  // whose amplitudes and kScale are fitted to the ink's hex at α=1.
+  const kSpectrum = film
+    ? absorptionFromFilm(film.solid, film.paper, ink.scatter)
+    : undefined;
   const cal = calibrateKScale(ink.hex, {
     kBands: ink.kBands,
+    kSpectrum,
     baseline: ink.baseline,
     kScale: ink.kScale,
+    scatter: ink.scatter,
     fluorescence: ink.fluorescence,
   });
   const calibratedBands = ink.kBands?.map((b, i) => ({
@@ -1528,6 +1656,7 @@ export const INKS: readonly Ink[] = INKS_RAW.map((ink) => {
     ...ink,
     rgb: hexToRgb(ink.hex),
     kBands: calibratedBands,
+    kSpectrum,
     baseline: cal.baseline,
     kScale: cal.kScale,
     fluorescence: calibratedFluorescence,
@@ -1569,6 +1698,11 @@ export const INKS_BY_RGB: ReadonlyMap<RgbU32, Ink> = (() => {
   }
   return map;
 })();
+
+/** Inks whose K shape came from a spectrophotometer rather than a hex. */
+export const MEASURED_INKS: readonly Ink[] = INKS.filter(
+  (ink) => ink.kBandsSource === "measured",
+);
 
 export const RISO_DEFAULTS: readonly string[] = [
   "bright-red",

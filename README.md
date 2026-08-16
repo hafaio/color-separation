@@ -48,12 +48,18 @@ Controls
 Known limits
 ------------
 
-- White and metallic inks are not modeled. They work by scattering light, and
-  every model here only removes light, so white is a near no-op in all three.
-- Fluorescent inks emit light as well as absorbing it, so only Kubelka-Munk,
-  which carries an explicit emission term, gets them close.
-- Real overprints come out slightly lighter than Multiply predicts, because a
-  second ink transfers less onto already-inked paper than onto bare stock.
+- Metallic inks are not modeled — they are flake, and reflect directionally
+  rather than scattering diffusely. White and the grays now cover under
+  Kubelka-Munk, but how strongly is a bracketed estimate rather than a
+  measurement, since Riso publishes nothing about it.
+- Fluorescent inks are approximated rather than modeled. Multiply gets them
+  about right on white paper and Kubelka-Munk carries an explicit emission
+  term, but their published colors are the least accurate in the palette —
+  fluorescent green's is roughly 15 ΔE from what it actually prints.
+- 6 inks are calibrated from real spectral measurements; the rest are still
+  inferred from their published color. An ink Kubelka-Munk can't reproduce
+  closely enough is left out of that model rather than rendered wrong, and
+  selecting one drops the mode back to Multiply for you.
 - Paper is assumed to be white.
 
 To Do

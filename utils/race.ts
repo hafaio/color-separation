@@ -22,7 +22,9 @@
 import { type RgbU32, rgbToCulori } from "./color";
 import {
   buildKmCache,
+  type KmCache,
   type MixingMode,
+  remapKmCache,
   type SeparationOptions,
   separateWithMask,
 } from "./sep";
@@ -46,24 +48,9 @@ export function findAutoOrder(
   const colorObjs = pool.map(rgbToCulori);
   const perms = permutations(n);
   const permPools = perms.map((p) => p.map((i) => colorObjs[i]));
-  const permLayers = layers
-    ? perms.map((p) => p.map((i) => layers[i]))
-    : undefined;
-  // KM mode needs a Neugebauer cache per permutation, but the cache only
-  // depends on layer order when at least one layer is fluorescent (the
-  // fluorescence pass attenuates emission by layers above it). Without any
-  // fluorescent layers, the simplified single-constant K-M is order-
-  // invariant, so all permutations can share one cache.
-  const fluorInPool =
-    layers?.some((layer) => layer.fluorescence !== undefined) ?? false;
   const permKmCaches =
-    mixingMode === "kubelka_munk" && permLayers
-      ? fluorInPool
-        ? permLayers.map(buildKmCache)
-        : (() => {
-            const shared = buildKmCache(permLayers[0]);
-            return permLayers.map(() => shared);
-          })()
+    mixingMode === "kubelka_munk" && layers
+      ? permCaches(layers, perms, press)
       : undefined;
   const targets = [...colorCounts.entries()]
     .sort(([, a], [, b]) => b - a)
@@ -165,6 +152,40 @@ export function findAutoOrder(
     return meanA - meanB;
   });
   return perms[survivors[0]];
+}
+
+/**
+ * One Neugebauer cache per permutation, built as cheaply as the physics
+ * allows.
+ *
+ * Scattering and fluorescence change what a stack of full-coverage dots
+ * reflects — white over black covers where black over white does not, and
+ * emission is attenuated by whatever sits above it — so the primaries
+ * themselves differ per permutation and each needs its own 2^n spectral build.
+ * Trapping doesn't touch them: it decides how much area each overlap gets, not
+ * what the overlap looks like, so one build covers every permutation once the
+ * bit↔ink labelling is remapped. With none of the three the arms are genuinely
+ * indistinguishable and can share a single cache outright; they tie, and the
+ * caller's fallback order wins.
+ */
+function permCaches(
+  layers: readonly SpectralLayer[],
+  perms: readonly (readonly number[])[],
+  press: boolean,
+): KmCache[] {
+  const stackDependent = layers.some(
+    (layer) => layer.fluorescence !== undefined || layer.s.some((sd) => sd > 0),
+  );
+  if (stackDependent) {
+    return perms.map((perm) =>
+      buildKmCache(perm.map((index) => layers[index])),
+    );
+  } else {
+    const shared = buildKmCache(layers);
+    return press
+      ? perms.map((perm) => remapKmCache(shared, perm))
+      : perms.map(() => shared);
+  }
 }
 
 function identity(n: number): number[] {

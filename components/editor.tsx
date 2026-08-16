@@ -141,7 +141,7 @@ export default function Editor({
           onMouseUp={onUp}
           type="button"
         >
-          Toggle Original
+          {showGrid ? "Hold for Composite" : "Hold for Original"}
         </button>
         <button
           aria-pressed={showGrid}
@@ -192,8 +192,10 @@ export default function Editor({
         <EditorHeader>Mixing</EditorHeader>
         <p className="text-slate-600 dark:text-slate-400">
           How overlapping inks combine. Multiply treats inks as filters, so
-          overprinting darkens; Kubelka-Munk does the same from measured
-          spectra, and is the only one that handles fluorescent inks.
+          overprinting darkens; Kubelka-Munk models absorption, scattering and
+          fluorescence per wavelength, from measured spectra where they exist
+          and a pigment reference elsewhere. It's the most physical of the
+          three, and the only one that handles fluorescent inks.
         </p>
         <Tooltip.Root>
           <Tooltip.Trigger asChild>

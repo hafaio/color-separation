@@ -101,12 +101,12 @@ test("benchmark: KM mean reconstruction error vs other modes", () => {
       `  ${name}: ${result.error.toFixed(1)}  (${result.millis.toFixed(1)} ms)`,
     );
   }
-  // No ordering is asserted between KM and multiply. KM currently scores
-  // slightly worse, and that is expected rather than a regression: its bands
-  // are synthesized from each ink's published hex and fitted at load, so it
-  // carries calibration residual on single inks, while multiply consumes the
-  // same hex directly and reproduces them exactly. Spectral modeling should
-  // pay off on overprints instead, which these single-target means don't
+  // No ordering is asserted between KM and multiply, and whichever way the
+  // printed numbers land is not a ranking to defend. Multiply consumes each
+  // ink's published hex directly and reproduces single inks exactly, while KM
+  // synthesizes its bands from that hex and fits them at load, so it carries
+  // calibration residual that these single-target means overweight; spectral
+  // modeling should pay off on overprints, which this benchmark doesn't
   // isolate. Subtractive is excluded outright — its forward is non-physical
   // and fits anything via LP, so its error is misleadingly low.
   for (const { error } of [multiply, km, multiplyPress, kmPress]) {

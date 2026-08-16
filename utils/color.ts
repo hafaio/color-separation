@@ -1,9 +1,9 @@
-import { type Color, converter, type Rgb } from "culori";
+import { type Color, clampChroma, converter, type Rgb } from "culori";
 
 /** RGB color packed into a single 32-bit integer: (r << 16) | (g << 8) | b. */
 export type RgbU32 = number;
 
-/** Channel triple in linear sRGB space, each in [0, 1]. */
+/** Channel triple in linear sRGB space; outside [0, 1] when out of gamut. */
 export type LinearRgb = readonly [number, number, number];
 
 // Round to the nearest byte and clamp to [0, 255]; culori conversions of
@@ -85,6 +85,17 @@ export function srgbEncode(c: number): number {
 /** One 0..255 byte → linear sRGB in [0, 1]. */
 export function byteToLinear(b: number): number {
   return srgbDecode(b / 255);
+}
+
+/**
+ * Linear sRGB triple → the nearest sRGB color of the same lightness and hue,
+ * shedding chroma until it fits. A per-channel clip moves an out-of-gamut
+ * color sideways as well as inward, so a saturated ink comes out the wrong
+ * hue rather than merely a duller one.
+ */
+export function linearToGamutRgb(lin: LinearRgb): Rgb {
+  const [r, g, b] = lin;
+  return clampChroma(toRgb({ mode: "lrgb", r, g, b }), "oklch");
 }
 
 /** Linear sRGB triple → packed RGB (clamped to gamut, byte-quantized). */

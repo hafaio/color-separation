@@ -22,7 +22,7 @@
  * phase for `subtractive`.
  */
 
-import { type Color, differenceCiede2000, type Rgb } from "culori";
+import { type Color, differenceCiede2000, type Lrgb, type Rgb } from "culori";
 import {
   type ConstraintBound,
   type SolveResult,
@@ -36,7 +36,6 @@ import {
   type LinearRgb,
   linearToRgb,
   rgbToCulori,
-  srgbEncode,
 } from "./color";
 import {
   gridSearch,
@@ -71,6 +70,33 @@ export function buildKmCache(layers: readonly SpectralLayer[]): KmCache {
   };
 }
 
+/**
+ * The same primaries relabelled for a reordered pool: `perm[j]` is the index
+ * in `cache`'s pool of the ink printed at position `j`, so primary `mask` here
+ * is `cache`'s primary for the ink set those bits name.
+ *
+ * Only valid where the primaries don't depend on stacking order — no
+ * scattering, no fluorescence — in which case reordering changes nothing but
+ * which bit means which ink, and one 2^n spectral build serves every
+ * permutation.
+ */
+export function remapKmCache(cache: KmCache, perm: readonly number[]): KmCache {
+  const total = 1 << cache.n;
+  const primaries = new Array<Float64Array>(total);
+  const primariesXyz = new Float64Array(total * 3);
+  for (let mask = 0; mask < total; mask++) {
+    let source = 0;
+    for (let bit = 0; bit < cache.n; bit++) {
+      if ((mask >> bit) & 1) source |= 1 << perm[bit];
+    }
+    primaries[mask] = cache.primaries[source];
+    primariesXyz[mask * 3] = cache.primariesXyz[source * 3];
+    primariesXyz[mask * 3 + 1] = cache.primariesXyz[source * 3 + 1];
+    primariesXyz[mask * 3 + 2] = cache.primariesXyz[source * 3 + 2];
+  }
+  return { n: cache.n, primaries, primariesXyz };
+}
+
 export const MIXING_MODES = [
   "subtractive",
   "multiply",
@@ -88,7 +114,11 @@ export interface Result {
   opacities: number[];
   /** Pool indices carrying nonzero opacity, as a bitmask. */
   inkMask: number;
-  /** ΔE00 between the target and `color`. */
+  /**
+   * ΔE00 from the target to the composed result. In the iterative modes that
+   * result is the unclamped physical one rather than the gamut-mapped `color`
+   * a display can show, so outside sRGB the two part company.
+   */
   deltaE: number;
 }
 
@@ -189,8 +219,12 @@ function delinearize(lin: LinearRgb): Rgb {
  *
  * Ink colors are measured as solids on white paper, so the down-and-back trip
  * is already folded into them and needs no second factor here. Paper is
- * assumed white. Order-independent, unlike a real press, and it can only
- * darken — opaque and fluorescent inks are outside what it can express.
+ * assumed white, and the model is order-independent, unlike a real press.
+ *
+ * Fluorescence needs no term of its own: a fluorescent ink emits in
+ * proportion to the light the stack beneath it returns, and scaling emission
+ * that way collapses algebraically back into this product. Opaque inks are
+ * the real gap, since nothing here can lighten what is below it.
  */
 function multiplyForward(
   opacities: readonly number[],
@@ -429,15 +463,19 @@ function subsetPrimariesXyz(
   return out;
 }
 
-/** Unrounded sRGB, so budget comparisons don't step in 1/255 jumps. */
-function linearToCulori(lin: LinearRgb): Rgb {
+/**
+ * Linear sRGB as culori sees it, unrounded and unclamped, for the ΔE00 the
+ * ink-minimization budget is spent against.
+ *
+ * Clipping here would score candidates by a different geometry than the
+ * solver optimizes in, which is unclamped linear RGB throughout. It would
+ * also be the wrong kind of projection: what this measures is a physical
+ * print, and a print's out-of-gamut chroma is real to anyone standing in
+ * front of it. Gamut mapping belongs to the display, not to a press decision.
+ */
+function linearToCulori(lin: LinearRgb): Lrgb {
   const [r, g, b] = lin;
-  return {
-    mode: "rgb",
-    r: srgbEncode(r),
-    g: srgbEncode(g),
-    b: srgbEncode(b),
-  };
+  return { mode: "lrgb", r, g, b };
 }
 
 function kmModeSolver(
