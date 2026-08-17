@@ -9,6 +9,7 @@ import {
   ndForwardXyz,
   ndPrimaries,
   ndPrimariesXyz,
+  permutedPrimaries,
   type SpectralLayer,
   spectralForward,
   spectrumToLinearSrgb,
@@ -400,3 +401,38 @@ test("the README counts the measured inks correctly", async () => {
   expect(stated).not.toBeNull();
   expect(Number(stated![1])).toBe(MEASURED_INKS.length);
 });
+
+test("permutedPrimaries matches a build per ordering", () => {
+  // white and gray scatter, fluorescent-pink emits: every path that makes a
+  // stack order-dependent is represented.
+  const layers = ["white", "gray", "fluorescent-pink", "blue"].map((id) =>
+    buildLayer(INKS_BY_ID.get(id)!),
+  );
+  const orderings = permutations(layers.length);
+  const shared = permutedPrimaries(layers, orderings);
+  for (const [index, order] of orderings.entries()) {
+    const alone = ndPrimaries(order.map((ink) => layers[ink]));
+    expect(shared[index].length).toBe(alone.length);
+    for (const [mask, spectrum] of alone.entries()) {
+      expect([...shared[index][mask]]).toEqual([...spectrum]);
+    }
+  }
+});
+
+function permutations(size: number): number[][] {
+  const indices = Array.from({ length: size }, (_, i) => i);
+  const out: number[][] = [];
+  const recurse = (start: number): void => {
+    if (start === size) {
+      out.push([...indices]);
+      return;
+    }
+    for (let i = start; i < size; i++) {
+      [indices[start], indices[i]] = [indices[i], indices[start]];
+      recurse(start + 1);
+      [indices[start], indices[i]] = [indices[i], indices[start]];
+    }
+  };
+  recurse(0);
+  return out;
+}
