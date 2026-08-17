@@ -390,6 +390,51 @@ export function ndPrimaries(layers: readonly SpectralLayer[]): Float64Array[] {
 }
 
 /**
+ * Primaries for many orderings of one pool, sharing work between them.
+ *
+ * A primary is the spectrum of a stack, so it depends only on which inks are
+ * in that stack and the order they went down in — permutations that agree on
+ * a subset's relative order get a bit-identical result. Across all 5040
+ * orderings of seven inks that is 13,700 distinct stacks rather than 645,120
+ * builds, which is the difference between a multi-second stall and a blink
+ * before the print-order race can take its first sample.
+ */
+export function permutedPrimaries(
+  layers: readonly SpectralLayer[],
+  perms: readonly (readonly number[])[],
+): Float64Array[][] {
+  // Ink indices pack into 3 bits apiece, biased so a zero limb ends the stack.
+  if (layers.length > 7) throw new Error("pool too wide to key stacks");
+  const stacks = new Map<number, Float64Array>();
+  const subset: SpectralLayer[] = [];
+  const alphas: number[] = [];
+  return perms.map((perm) => {
+    const total = 1 << perm.length;
+    const out: Float64Array[] = new Array(total);
+    for (let mask = 0; mask < total; mask++) {
+      subset.length = 0;
+      alphas.length = 0;
+      let key = 0;
+      for (let position = 0; position < perm.length; position++) {
+        if ((mask >> position) & 1) {
+          const ink = perm[position];
+          subset.push(layers[ink]);
+          alphas.push(1);
+          key = (key << 3) | (ink + 1);
+        }
+      }
+      let stack = stacks.get(key);
+      if (stack === undefined) {
+        stack = spectralForward(alphas, subset);
+        stacks.set(key, stack);
+      }
+      out[mask] = stack;
+    }
+    return out;
+  });
+}
+
+/**
  * Pre-integrate each primary's spectrum to D65-weighted XYZ for the solver's
  * fast inner loop. Returns a flat `Float64Array` of length 3·numPrimaries.
  */

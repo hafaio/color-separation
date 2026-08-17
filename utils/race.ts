@@ -28,7 +28,11 @@ import {
   type SeparationOptions,
   separateWithMask,
 } from "./sep";
-import type { SpectralLayer } from "./spectral";
+import {
+  ndPrimariesXyz,
+  permutedPrimaries,
+  type SpectralLayer,
+} from "./spectral";
 
 const AUTO_PERM_CAP = 7; // skip auto-order above N=7 (5040 perms)
 const MASS_FRACTION = 0.3; // pixel mass after which we just accept the leader
@@ -167,6 +171,10 @@ export function findAutoOrder(
  * bit↔ink labelling is remapped. With none of the three the arms are genuinely
  * indistinguishable and can share a single cache outright; they tie, and the
  * caller's fallback order wins.
+ *
+ * Even the per-permutation builds share most of their work, since a stack that
+ * appears in one ordering appears identically in every ordering that agrees
+ * with it — see `permutedPrimaries`.
  */
 function permCaches(
   layers: readonly SpectralLayer[],
@@ -177,9 +185,20 @@ function permCaches(
     (layer) => layer.fluorescence !== undefined || layer.s.some((sd) => sd > 0),
   );
   if (stackDependent) {
-    return perms.map((perm) =>
-      buildKmCache(perm.map((index) => layers[index])),
-    );
+    // permutedPrimaries hands back the same spectrum object wherever two
+    // orderings share a stack, so integrating by identity reuses that sharing
+    // instead of redoing the same 36 bins up to 5040 times.
+    const integrated = new Map<Float64Array, Float64Array>();
+    return permutedPrimaries(layers, perms).map((primaries) => {
+      const primariesXyz = new Float64Array(primaries.length * 3);
+      for (const [index, primary] of primaries.entries()) {
+        const cached = integrated.get(primary);
+        const xyz = cached ?? ndPrimariesXyz([primary]);
+        if (cached === undefined) integrated.set(primary, xyz);
+        primariesXyz.set(xyz, index * 3);
+      }
+      return { n: layers.length, primaries, primariesXyz };
+    });
   } else {
     const shared = buildKmCache(layers);
     return press
