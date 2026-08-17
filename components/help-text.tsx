@@ -45,8 +45,8 @@ export default function HelpText({
           <ul className="list-disc ml-4 space-y-1">
             <li>
               <span className="font-medium">Subtractive</span> — mixes ink
-              colors straight in sRGB. Fastest, and hits almost any color
-              exactly, but it isn't how ink behaves on paper.
+              colors straight in sRGB, as a linear program. Fastest, and hits
+              almost any color exactly, but it isn't how ink behaves on paper.
             </li>
             <li>
               <span className="font-medium">Multiply</span> — treats each ink as
@@ -70,7 +70,10 @@ export default function HelpText({
           <p>
             On by default for Multiply and Kubelka-Munk. Dots spread on
             absorbent paper — a nominal 50% covers about 75% — while a dot
-            landing on ink spreads no further.
+            landing on ink already down spreads no further. Calibrated from one
+            photographed chart on one machine, so treat it as approximate on any
+            other. Subtractive is an abstraction rather than a print prediction,
+            so it isn't offered there.
           </p>
         </div>
         <div className="space-y-1">
@@ -79,8 +82,10 @@ export default function HelpText({
           </p>
           <p>
             How much color shift, in ΔE00, you'll accept to drop an ink layer.
-            Black costs more than the other inks, since riso darks come out
-            better overprinted from colors than screened as grey black dots.
+            Zero keeps every color as accurate as the palette allows; higher
+            settings rebuild colors from fewer layers. Offered for Multiply and
+            Kubelka-Munk; Subtractive fits nearly every color exactly and has no
+            spare layers to trade.
           </p>
         </div>
         <div className="space-y-1">
@@ -100,8 +105,10 @@ export default function HelpText({
             Which ink prints first, paper-adjacent. Kubelka-Munk always cares,
             and Multiply cares once press simulation is on, since a dot spreads
             differently on paper than on ink already down. Subtractive never
-            does. Choose a fixed order or let the solver search permutations for
-            the lowest weighted reconstruction error.
+            does. Choose a fixed order or let Automatic search permutations for
+            the lowest weighted reconstruction error — though where the model
+            ignores order there is nothing to search. It also numbers and names
+            the exported layers, so it still matters there.
           </p>
         </div>
       </div>

@@ -398,21 +398,39 @@ function tintSeparation(img: HTMLImageElement, color: RgbU32): OffscreenCanvas {
     data[i] = Math.round(255 * (1 - opacity) + pr * opacity);
     data[i + 1] = Math.round(255 * (1 - opacity) + pg * opacity);
     data[i + 2] = Math.round(255 * (1 - opacity) + pb * opacity);
+    // Separations carry the source's alpha, but a channel is ink on paper:
+    // where the artwork is empty the press still prints bare sheet, and
+    // leaving it clear puts a light ink on the app's own background instead.
+    data[i + 3] = 255;
   }
   ctx.putImageData(imgData, 0, 0);
   return canvas;
 }
 
+/** Enough of a tiling's geometry to address one of its cells. */
+export interface GridCell {
+  readonly width: number;
+  readonly height: number;
+  readonly cellWidth: number;
+  readonly cellHeight: number;
+}
+
 /**
- * Tile the composite and every channel into one image. The composite leads so
- * there is something to compare the channels against; it is already in color,
- * so only the channels get tinted.
+ * Tile every channel into one image, tinted with its ink, leaving the lead cell
+ * empty. The viewer fills that cell with the composite, or with the original
+ * while you hold to compare — keeping it out of the tiling means neither is
+ * ever composited over the other. Cells no channel fills are left unpainted —
+ * hence PNG — so the tiling sits on the app background rather than a white
+ * slab, while a cell a channel does fill stays opaque to its own edges.
+ *
+ * The composite still sizes the cells and occupies the lead slot, so the
+ * geometry is the same as if it were drawn.
  */
 export async function genGrid(
   composite: Blob,
   separations: readonly Blob[],
   colors: readonly RgbU32[],
-): Promise<Blob> {
+): Promise<{ blob: Blob; cell: GridCell }> {
   const urls = [composite, ...separations].map((sep) =>
     URL.createObjectURL(sep),
   );
@@ -434,22 +452,19 @@ export async function genGrid(
     const rows = Math.ceil(images.length / cols);
     const canvas = new OffscreenCanvas(cols * cellWidth, rows * cellHeight);
     const ctx = canvas.getContext("2d")!;
-    ctx.fillStyle = "white";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
     for (const [index, img] of images.entries()) {
+      if (index === 0) continue;
       const col = index % cols;
       const row = Math.floor(index / cols);
-      const cellX = col * cellWidth;
-      const cellY = row * cellHeight;
-      const dx = cellX + (cellWidth - img.naturalWidth) / 2;
-      const dy = cellY + (cellHeight - img.naturalHeight) / 2;
       ctx.drawImage(
-        index === 0 ? img : tintSeparation(img, colors[index - 1]),
-        dx,
-        dy,
+        tintSeparation(img, colors[index - 1]),
+        col * cellWidth + (cellWidth - img.naturalWidth) / 2,
+        row * cellHeight + (cellHeight - img.naturalHeight) / 2,
       );
     }
-    return await canvas.convertToBlob({ type: "image/png" });
+    const blob = await canvas.convertToBlob({ type: "image/png" });
+    const { width, height } = canvas;
+    return { blob, cell: { width, height, cellWidth, cellHeight } };
   } finally {
     for (const url of urls) {
       URL.revokeObjectURL(url);

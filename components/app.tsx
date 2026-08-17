@@ -21,6 +21,7 @@ import { INKS_BY_ID, INKS_BY_RGB, RISO_DEFAULTS } from "../utils/inks";
 import { LruMap } from "../utils/lru";
 import type { MixingMode } from "../utils/sep";
 import {
+  type GridCell,
   genGrid,
   genPreviewAndSeparation,
   genSeparation,
@@ -82,9 +83,18 @@ const RENDER_CACHE_MAX = 64;
 // A couple of ΔE00 buys a big drop in ink layers for nearly-invisible drift.
 const DEFAULT_TOLERANCE = 2;
 
+/**
+ * Only press simulation makes an overprint care which ink went down first, and
+ * subtractive never simulates a press.
+ */
+function isOrderIndependent(mixingMode: MixingMode, press: boolean): boolean {
+  return mixingMode === "subtractive" || (mixingMode === "multiply" && !press);
+}
+
 interface RenderCacheEntry {
   readonly preview: string;
   readonly grid: string;
+  readonly cell: GridCell;
   readonly autoChosen: readonly RgbU32[] | undefined;
 }
 
@@ -189,6 +199,7 @@ export default function App(): ReactElement {
 
   const [preview, setPreview] = useState<string | undefined>();
   const [grid, setGrid] = useState<string | undefined>();
+  const [cell, setCell] = useState<GridCell | undefined>();
   const [increments, setIncrements] = useState(0);
   const [tolerance, setTolerance] = useState(DEFAULT_TOLERANCE);
   // On by default: without it midtones come out roughly 10 ΔE00 too light.
@@ -257,6 +268,7 @@ export default function App(): ReactElement {
     if (!parsed) {
       setPreview(undefined);
       setGrid(undefined);
+      setCell(undefined);
       setRendering(false);
       return;
     }
@@ -267,6 +279,7 @@ export default function App(): ReactElement {
     if (!pool.length) {
       setPreview(undefined);
       setGrid(undefined);
+      setCell(undefined);
       setRendering(false);
       return;
     }
@@ -282,11 +295,15 @@ export default function App(): ReactElement {
     if (cached) {
       setPreview(cached.preview);
       setGrid(cached.grid);
+      setCell(cached.cell);
       setAutoChosen(cached.autoChosen);
       setRendering(false);
       return;
     }
-    const autoOrder = ordering === "auto";
+    // Every permutation ties under an order-independent model, so the search
+    // can only hand back the fallback order it started from.
+    const autoOrder =
+      ordering === "auto" && !isOrderIndependent(mixingMode, press);
     let cancelled = false;
     // Skip state updates for sub-1% deltas so React doesn't reconcile the
     // toolbar tree on every per-color worker progress message.
@@ -320,7 +337,11 @@ export default function App(): ReactElement {
         // separations come back in chosen order; tint with the corresponding
         // (potentially-remapped) render colors.
         const tintColors = chosenOrder.map((idx) => renderPool[idx]);
-        const gridBlob = await genGrid(previewBlob, separations, tintColors);
+        const { blob: gridBlob, cell } = await genGrid(
+          previewBlob,
+          separations,
+          tintColors,
+        );
         const [previewUrl, gridUrl] = await Promise.all([
           blob2url(previewBlob),
           blob2url(gridBlob),
@@ -328,6 +349,7 @@ export default function App(): ReactElement {
         const entry: RenderCacheEntry = {
           preview: previewUrl,
           grid: gridUrl,
+          cell,
           autoChosen: autoOrder
             ? chosenOrder.map((idx) => pool[idx])
             : undefined,
@@ -338,6 +360,7 @@ export default function App(): ReactElement {
         if (!cancelled) {
           setPreview(entry.preview);
           setGrid(entry.grid);
+          setCell(entry.cell);
           setAutoChosen(entry.autoChosen);
         }
       } catch (ex) {
@@ -345,6 +368,7 @@ export default function App(): ReactElement {
         if (!cancelled) {
           setPreview(undefined);
           setGrid(undefined);
+          setCell(undefined);
           toaster.create({
             title: "Couldn't separate image",
             type: "error",
@@ -484,6 +508,7 @@ export default function App(): ReactElement {
         setTolerance={setTolerance}
         press={press}
         setPress={setPress}
+        orderIndependent={isOrderIndependent(mixingMode, press)}
         download={download}
         isDownloading={isDownloading}
         setShowRaw={setShowRaw}
@@ -494,21 +519,40 @@ export default function App(): ReactElement {
     ) : (
       <HelpText closeable={!!parsed} />
     );
-  const src = showRaw
-    ? parsed?.preview
-    : showGrid && grid
-      ? grid
-      : (preview ?? parsed?.preview);
-  const img = src ? (
-    <Image
-      src={src}
-      alt="rendered separation"
-      className="h-full w-full object-contain select-none"
-      draggable={false}
-      width="1"
-      height="1"
-    />
-  ) : null;
+  // Holding shows the uploaded image; with the channels up that swaps only the
+  // lead cell, so the channels stay put to compare against.
+  const lead = showRaw ? parsed?.preview : (preview ?? parsed?.preview);
+  // One shared coordinate system for the tiling and the cell drawn into it, so
+  // the browser fits both at once and nothing here measures anything.
+  const img =
+    showGrid && grid && cell ? (
+      <svg
+        viewBox={`0 0 ${cell.width} ${cell.height}`}
+        preserveAspectRatio="xMidYMid meet"
+        className="h-full w-full select-none"
+        role="img"
+        aria-label="rendered separation"
+      >
+        <image href={grid} width={cell.width} height={cell.height} />
+        {lead && (
+          <image
+            href={lead}
+            width={cell.cellWidth}
+            height={cell.cellHeight}
+            preserveAspectRatio="xMidYMid meet"
+          />
+        )}
+      </svg>
+    ) : lead ? (
+      <Image
+        src={lead}
+        alt="rendered separation"
+        className="h-full w-full object-contain select-none"
+        draggable={false}
+        width="1"
+        height="1"
+      />
+    ) : null;
 
   const onDrop = useCallback(
     (accepted: File[], rejected: FileRejection[]) => {
@@ -541,12 +585,12 @@ export default function App(): ReactElement {
     <>
       <div
         {...getRootProps({
-          className: "h-screen w-screen flex flex-row",
+          className: "h-screen w-screen flex flex-row overflow-hidden",
         })}
       >
         <input {...getInputProps()} />
         <DropModal show={isDragActive} />
-        <div className="w-72 h-full p-2 flex flex-col flex-shrink-0 gap-2 bg-slate-50 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700">
+        <div className="w-72 h-full min-h-0 p-2 flex flex-col flex-shrink-0 gap-2 bg-slate-50 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700">
           <div className="flex flex-col gap-2 flex-shrink-0">
             <h1 className="flex items-center justify-center gap-2 font-bold text-xl">
               <Logo size={26} className="flex-shrink-0" />
@@ -557,7 +601,7 @@ export default function App(): ReactElement {
           {editor}
           <Footer helpDisabled={!parsed} toggleHelp={toggleHelp} />
         </div>
-        <div className="h-full w-full overflow-auto relative" ref={imgBox}>
+        <div className="h-full w-full overflow-hidden relative" ref={imgBox}>
           {img}
           {(rendering || isDownloading) && (
             <div className="absolute top-0 left-0 right-0 h-1 bg-slate-200 dark:bg-slate-700 pointer-events-none overflow-hidden">

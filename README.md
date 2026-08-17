@@ -33,7 +33,9 @@ Controls
 - **Ink Minimization** — drop ink layers wherever a color can be rebuilt from
   fewer of them, in ΔE00. With more inks than color dimensions, many different
   ink combinations produce the same color; without this the solver happily
-  spends six overlapping layers where one would do.
+  spends six overlapping layers where one would do. Offered for Multiply and
+  Kubelka-Munk: subtractive fits nearly every color exactly, so it has no
+  metamer spread to collapse.
 - **Discretizations** — snap opacities to a fixed number of steps, for a more
   posterized result.
 - **Ordering** — which ink is laid down first. Only matters for models where
