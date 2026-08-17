@@ -1,7 +1,9 @@
 import { Slider } from "@ark-ui/react/slider";
+import { Switch } from "@ark-ui/react/switch";
 import { Tooltip } from "@ark-ui/react/tooltip";
 import {
   type ChangeEvent,
+  type PointerEvent,
   type PropsWithChildren,
   type ReactElement,
   useCallback,
@@ -21,8 +23,16 @@ export type Action =
   | { action: "remap"; color: RgbU32; remap: RgbU32 }
   | { action: "clear" };
 
-function EditorHeader({ children }: PropsWithChildren): ReactElement {
-  return <h2 className="font-bold text-lg">{children}</h2>;
+function EditorHeader({
+  children,
+  action,
+}: PropsWithChildren<{ action?: ReactElement }>): ReactElement {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <h2 className="font-bold text-lg">{children}</h2>
+      {action}
+    </div>
+  );
 }
 
 export default function Editor({
@@ -44,6 +54,7 @@ export default function Editor({
   setTolerance,
   press,
   setPress,
+  orderIndependent,
   download,
   isDownloading,
   setShowRaw,
@@ -69,6 +80,8 @@ export default function Editor({
   setTolerance: (tolerance: number) => void;
   press: boolean;
   setPress: (press: boolean) => void;
+  /** Whether the model composes the same however the inks are stacked. */
+  orderIndependent: boolean;
   download: () => void;
   isDownloading: boolean;
   setShowRaw: (val: boolean) => void;
@@ -76,9 +89,15 @@ export default function Editor({
   setShowGrid: (val: boolean) => void;
   rendering: boolean;
 }): ReactElement {
-  const onDown = useCallback(() => {
-    setShowRaw(true);
-  }, [setShowRaw]);
+  // Capturing the pointer keeps the release on this button, so dragging off
+  // it mid-hold still ends the hold -- and makes it work under touch.
+  const onDown = useCallback(
+    (event: PointerEvent<HTMLButtonElement>) => {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setShowRaw(true);
+    },
+    [setShowRaw],
+  );
   const onUp = useCallback(() => {
     setShowRaw(false);
   }, [setShowRaw]);
@@ -122,11 +141,31 @@ export default function Editor({
     [setMixingMode],
   );
   const pressChange = useCallback(
-    (evt: ChangeEvent<HTMLInputElement>) => {
-      setPress(evt.target.checked);
+    ({ checked }: { checked: boolean }) => {
+      setPress(checked);
     },
     [setPress],
   );
+  const subtractive = mixingMode === "subtractive";
+  // Rendered unconditionally and disabled, rather than from inside the
+  // mixing-mode conditional it used to live in: mounting and unmounting it as
+  // the mode changed restarted its transition every time.
+  const pressSwitch = (
+    <Switch.Root
+      checked={press && !subtractive}
+      className="flex-shrink-0 data-[disabled]:opacity-50"
+      disabled={subtractive}
+      id="press-simulation"
+      onCheckedChange={pressChange}
+    >
+      <Switch.Control className="block w-9 h-5 rounded-full bg-slate-300 dark:bg-slate-600 data-[state=checked]:bg-slate-500 dark:data-[state=checked]:bg-slate-400 transition-colors p-0.5">
+        <Switch.Thumb className="block w-4 h-4 rounded-full bg-white shadow transition-transform data-[state=checked]:translate-x-4" />
+      </Switch.Control>
+      <Switch.Label className="sr-only">Simulate dot gain</Switch.Label>
+      <Switch.HiddenInput />
+    </Switch.Root>
+  );
+
   const selected = [...colors.values()].some(({ active }) => active);
   const exportText = selected
     ? undefined
@@ -137,11 +176,12 @@ export default function Editor({
         <button
           className="w-full px-4 py-2 bg-slate-300 hover:bg-slate-400 text-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 dark:text-white rounded disabled:opacity-50 disabled:pointer-events-none"
           disabled={!selected}
-          onMouseDown={onDown}
-          onMouseUp={onUp}
+          onPointerCancel={onUp}
+          onPointerDown={onDown}
+          onPointerUp={onUp}
           type="button"
         >
-          {showGrid ? "Hold for Composite" : "Hold for Original"}
+          Hold for Original
         </button>
         <button
           aria-pressed={showGrid}
@@ -177,7 +217,7 @@ export default function Editor({
           )}
         </Tooltip.Root>
       </div>
-      <div className="flex flex-col gap-2 flex-grow min-h-0 overflow-y-auto pr-1 -mr-1">
+      <div className="relative flex flex-col gap-2 flex-grow min-h-0 overflow-y-auto pr-1 -mr-1">
         <EditorHeader>Colors</EditorHeader>
         <p className="text-slate-600 dark:text-slate-400">
           Click a color to toggle its use in the separation
@@ -191,11 +231,8 @@ export default function Editor({
         />
         <EditorHeader>Mixing</EditorHeader>
         <p className="text-slate-600 dark:text-slate-400">
-          How overlapping inks combine. Multiply treats inks as filters, so
-          overprinting darkens; Kubelka-Munk models absorption, scattering and
-          fluorescence per wavelength, from measured spectra where they exist
-          and a pigment reference elsewhere. It's the most physical of the
-          three, and the only one that handles fluorescent inks.
+          How overlapping inks combine. Subtractive is the fastest and most
+          exact, Kubelka-Munk the most physical.
         </p>
         <Tooltip.Root>
           <Tooltip.Trigger asChild>
@@ -221,31 +258,11 @@ export default function Editor({
             </Tooltip.Positioner>
           )}
         </Tooltip.Root>
-        {mixingMode !== "subtractive" && (
-          <>
-            <EditorHeader>Press Simulation</EditorHeader>
-            <p className="text-slate-600 dark:text-slate-400">
-              Predicts the midtone darkening and weak overprints of a real
-              duplicator: screened dots spread on absorbent paper, and a dot
-              landing on ink spreads no further. Calibrated from one reference
-              chart, so it is only approximate for any particular machine and
-              paper.
-            </p>
-            <label className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
-              <input
-                checked={press}
-                className="w-4 h-4 accent-slate-500"
-                onChange={pressChange}
-                type="checkbox"
-              />
-              Simulate dot gain and trapping
-            </label>
-          </>
-        )}
         <EditorHeader>Ordering</EditorHeader>
         <p className="text-slate-600 dark:text-slate-400">
           Print order of selected colors. First is printed paper-adjacent; last
           is on top.
+          {orderIndependent && " This model only uses it to number the layers."}
         </p>
         <select
           className="w-full px-2 py-1 border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 dark:text-slate-100"
@@ -270,8 +287,8 @@ export default function Editor({
         />
         <EditorHeader>Discretizations</EditorHeader>
         <p className="text-slate-600 dark:text-slate-400">
-          Drag the slider to change the number of discrete opacities, this
-          produces a more posterized appearance.
+          Number of discrete opacities each layer is rounded to, for a
+          posterized look.
         </p>
         <div className="px-4">
           <Slider.Root
@@ -294,12 +311,12 @@ export default function Editor({
         </div>
         <EditorHeader>Ink Minimization</EditorHeader>
         <p className="text-slate-600 dark:text-slate-400">
-          Drop ink layers wherever a color can be rebuilt from fewer of them.
-          Higher settings allow a bigger color shift to save a layer; zero keeps
-          every color as accurate as the palette allows.
+          How much color shift you'll accept to drop an ink layer.
+          {subtractive && " Doesn't apply to Subtractive."}
         </p>
-        <div className="px-4">
+        <div className={`px-4 ${subtractive ? "opacity-50" : ""}`}>
           <Slider.Root
+            disabled={subtractive}
             value={[tolerance]}
             onValueChange={(details) => setTolerance(details.value[0])}
             min={0}
@@ -317,6 +334,11 @@ export default function Editor({
             </Slider.Control>
           </Slider.Root>
         </div>
+        <EditorHeader action={pressSwitch}>Press Simulation</EditorHeader>
+        <p className="text-slate-600 dark:text-slate-400">
+          Spread screened dots the way paper does, so midtones print darker.
+          {subtractive && " Doesn't apply to Subtractive."}
+        </p>
       </div>
     </>
   );
